@@ -7,8 +7,9 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import type { SessionData, AIAnalysisResult } from '@/utils/types';
+import type { SessionData, AIAnalysisResult, GoalConfig } from '@/utils/types';
 import { getGrade } from '@/utils/focus';
+import { isGoalCompliant } from '@/utils/goal-evaluator';
 import { startVoiceNote, isSpeechRecognitionSupported } from '@/utils/voice-note';
 import { BADGE_DEFINITIONS } from '@/utils/gamification';
 import type { VoiceNoteResult } from '@/utils/voice-note';
@@ -54,6 +55,7 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
   const [aiResult, setAiResult] = useState<AIAnalysisResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [aiTrendMode, setAiTrendMode] = useState(false);
 
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceText, setVoiceText] = useState('');
@@ -74,13 +76,19 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
     }
   }, [session, aiResult]);
 
-  /** Phân tích AI */
-  const handleAIAnalysis = useCallback(async () => {
+  /** Phân tích AI (single hoặc trend) */
+  const handleAIAnalysis = useCallback(async (includeTrend = false) => {
     setAiLoading(true);
     setAiError('');
+    setAiTrendMode(includeTrend);
     try {
       const { analyzeSession } = await import('@/utils/ai-analysis');
-      const result = await analyzeSession(session, undefined, voiceText || undefined);
+      const result = await analyzeSession(
+        session,
+        undefined,
+        voiceText || undefined,
+        includeTrend ? { includeTrend: true } : undefined,
+      );
       setAiResult(result);
     } catch (err: unknown) {
       setAiError(err instanceof Error ? err.message : 'Lỗi phân tích AI');
@@ -185,13 +193,166 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
         <div className="result-domains">
           <p className="result-domains-title">🌐 Domain truy cập</p>
           <div className="domain-list">
-            {topDomains.map(([domain, count]) => (
-              <div key={domain} className="domain-row">
-                <span className="domain-name">{domain}</span>
-                <span className="domain-count">{count}×</span>
-              </div>
-            ))}
+            {topDomains.map(([domain, count]) => {
+              const secs = count * 6;
+              const durStr = secs < 60 ? `~${secs}s` : `~${Math.floor(secs / 60)}p${secs % 60 > 0 ? `${secs % 60}s` : ''}`;
+              return (
+                <div key={domain} className="domain-row">
+                  <span className="domain-name">{domain}</span>
+                  <span className="domain-count">{count}× – {durStr}</span>
+                </div>
+              );
+            })}
           </div>
+
+          {/* Horizontal bar chart — thời gian truy cập */}
+          <div className="domain-bar-chart">
+            {(() => {
+              const maxSecs = Math.max(...topDomains.map(([, c]) => c * 6));
+              return topDomains.map(([domain, count]) => {
+                const secs = count * 6;
+                const pct = maxSecs > 0 ? (secs / maxSecs) * 100 : 0;
+                const durStr = secs < 60 ? `~${secs}s` : `~${Math.floor(secs / 60)}p${secs % 60 > 0 ? `${secs % 60}s` : ''}`;
+                return (
+                  <div key={domain} className="domain-bar-row">
+                    <span className="domain-bar-label">{domain}</span>
+                    <div className="domain-bar-track">
+                      <div
+                        className="domain-bar-fill"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="domain-bar-value">{durStr}</span>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+
+          {/* Pie chart — phân bổ thời gian domain */}
+          {(() => {
+            const goalConfig: GoalConfig = {
+              mode: session.config.mode,
+              customAllowedDomains: session.config.allowedDomains,
+              customExternalRule: session.config.allowExternalApps,
+            };
+            const totalSecs = topDomains.reduce((sum, [, c]) => sum + c * 6, 0);
+            if (totalSecs === 0) return null;
+
+            // Color palettes: shades of green (compliant) and red (non-compliant)
+            const GREEN_SHADES = ['#22c55e', '#16a34a', '#15803d', '#4ade80', '#86efac'];
+            const RED_SHADES = ['#ef4444', '#dc2626', '#b91c1c', '#f87171', '#fca5a5'];
+            let greenIdx = 0;
+            let redIdx = 0;
+
+            const cx = 60;
+            const cy = 60;
+            const r = 50;
+            let cumulativeAngle = -Math.PI / 2; // start at top
+
+            const slices = topDomains.map(([domain, count]) => {
+              const secs = count * 6;
+              const fraction = secs / totalSecs;
+              const startAngle = cumulativeAngle;
+              const sliceAngle = fraction * 2 * Math.PI;
+              const midAngle = startAngle + sliceAngle / 2;
+              cumulativeAngle += sliceAngle;
+              const endAngle = cumulativeAngle;
+              const largeArc = sliceAngle > Math.PI ? 1 : 0;
+              const compliant = isGoalCompliant(domain, goalConfig);
+              const color = compliant
+                ? GREEN_SHADES[greenIdx++ % GREEN_SHADES.length]
+                : RED_SHADES[redIdx++ % RED_SHADES.length];
+
+              const durStr = secs < 60 ? `~${secs}s` : `~${Math.floor(secs / 60)}p${secs % 60 > 0 ? `${secs % 60}s` : ''}`;
+
+              // For single-domain (100%), draw a full circle
+              if (topDomains.length === 1) {
+                return { domain, fraction, color, compliant, path: null, midAngle, durStr };
+              }
+
+              const x1 = cx + r * Math.cos(startAngle);
+              const y1 = cy + r * Math.sin(startAngle);
+              const x2 = cx + r * Math.cos(endAngle);
+              const y2 = cy + r * Math.sin(endAngle);
+              const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+              return { domain, fraction, color, compliant, path: d, midAngle, durStr };
+            });
+
+            return (
+              <div className="domain-pie-section">
+                <p className="domain-pie-title">📊 Phân bổ thời gian</p>
+                <div className="domain-pie-container">
+                  <svg
+                    className="domain-pie-svg"
+                    viewBox="0 0 120 120"
+                    width="120"
+                    height="120"
+                    aria-label="Biểu đồ tròn thời gian truy cập domain"
+                  >
+                    {slices.map((s) =>
+                      s.path ? (
+                        <path
+                          key={s.domain}
+                          d={s.path}
+                          fill={s.color}
+                          stroke="#fff"
+                          strokeWidth="1"
+                        />
+                      ) : (
+                        <circle
+                          key={s.domain}
+                          cx={cx}
+                          cy={cy}
+                          r={r}
+                          fill={s.color}
+                        />
+                      ),
+                    )}
+                    {/* % labels on slices > 8% */}
+                    {slices.map((s) => {
+                      if (s.fraction <= 0.08 || topDomains.length === 1) return null;
+                      const lx = cx + r * 0.6 * Math.cos(s.midAngle);
+                      const ly = cy + r * 0.6 * Math.sin(s.midAngle);
+                      return (
+                        <text
+                          key={`lbl-${s.domain}`}
+                          x={lx}
+                          y={ly}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fill="#fff"
+                          fontSize="9"
+                          fontWeight="700"
+                        >
+                          {Math.round(s.fraction * 100)}%
+                        </text>
+                      );
+                    })}
+                  </svg>
+                  <div className="domain-pie-legend">
+                    {slices.map((s) => (
+                      <div key={s.domain} className="pie-legend-item">
+                        <span
+                          className="pie-legend-dot"
+                          style={{ background: s.color }}
+                        />
+                        <span className="pie-legend-domain">{s.domain}</span>
+                        <span className="pie-legend-pct">{Math.round(s.fraction * 100)}%</span>
+                        <span className="pie-legend-dur">{s.durStr}</span>
+                      </div>
+                    ))}
+                    <div className="pie-legend-hint">
+                      <span className="pie-legend-dot" style={{ background: '#22c55e' }} />
+                      <span>Phù hợp mục tiêu</span>
+                      <span className="pie-legend-dot" style={{ background: '#ef4444', marginLeft: 8 }} />
+                      <span>Không phù hợp</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -232,14 +393,24 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
 
       {/* ── AI Analysis ── */}
       <div className="result-ai-section" aria-live="polite">
-        <button
-          className="btn btn-secondary btn-full"
-          onClick={handleAIAnalysis}
-          disabled={aiLoading || !!aiResult}
-          type="button"
-        >
-          {aiLoading ? '🔄 Đang phân tích...' : aiResult ? '✅ Đã phân tích' : '🤖 Phân tích AI'}
-        </button>
+        <div className="ai-buttons-row">
+          <button
+            className="btn btn-secondary btn-full"
+            onClick={() => handleAIAnalysis(false)}
+            disabled={aiLoading || (!!aiResult && !aiTrendMode)}
+            type="button"
+          >
+            {aiLoading && !aiTrendMode ? '🔄 Đang phân tích...' : aiResult && !aiTrendMode ? '✅ Đã phân tích' : '🤖 Phân tích phiên này'}
+          </button>
+          <button
+            className="btn btn-secondary btn-full"
+            onClick={() => handleAIAnalysis(true)}
+            disabled={aiLoading || (!!aiResult && aiTrendMode)}
+            type="button"
+          >
+            {aiLoading && aiTrendMode ? '🔄 Đang phân tích...' : aiResult && aiTrendMode ? '✅ Đã phân tích' : '📊 Phân tích xu hướng'}
+          </button>
+        </div>
         {aiError && <p className="form-hint form-hint--warning">{aiError}</p>}
         {aiResult && (
           <div className="ai-result-card">

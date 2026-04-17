@@ -158,6 +158,14 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+/** Format thời gian domain (giây → chuỗi dễ đọc) */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `~${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}p ${s}s` : `${m}p`;
+}
+
 /** Format timestamp → readable date string */
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleString('vi-VN', {
@@ -260,23 +268,41 @@ function renderPage1(doc: jsPDF, data: CertificateData, font: string) {
     infoY += lines.length * 4.5;
   }
 
-  // ── Top Domains visited ──
+  // ── Top Domains (horizontal bar chart, left column) ──
   if (stats.topDomains.length > 0) {
     const domainStartY = 130;
     doc.setFont(font, 'bold');
     doc.setFontSize(11);
     doc.setTextColor(...TEXT_COLOR);
-    doc.text('Top Domains Visited', MARGIN, domainStartY);
+    doc.text('Top Domains', MARGIN, domainStartY);
 
-    doc.setFont(font, 'normal');
-    doc.setFontSize(9);
+    const maxDur = Math.max(...stats.topDomains.map((d) => d.durationSeconds));
+    const chartBarW = 45; // bar width fits left column
+    const domainLabelW = 38; // domain label width
+    const bx = MARGIN + domainLabelW;
+
+    doc.setFontSize(8);
     let dy = domainStartY + 7;
-    for (const { domain, count } of stats.topDomains.slice(0, 5)) {
+    for (const { domain, count, durationSeconds } of stats.topDomains.slice(0, 5)) {
+      // Domain label (truncated)
+      doc.setFont(font, 'normal');
       doc.setTextColor(...TEXT_COLOR);
-      doc.text(`${domain}`, MARGIN + 3, dy);
+      const label = domain.length > 16 ? domain.slice(0, 14) + '…' : domain;
+      doc.text(label, MARGIN, dy);
+
+      // Background bar
+      doc.setFillColor(226, 232, 240);
+      doc.rect(bx, dy - 3, chartBarW, 3.5, 'F');
+
+      // Filled bar
+      const ratio = maxDur > 0 ? durationSeconds / maxDur : 0;
+      doc.setFillColor(...PRIMARY_COLOR);
+      doc.rect(bx, dy - 3, chartBarW * ratio, 3.5, 'F');
+
+      // Duration + count label
       doc.setTextColor(...TEXT_SECONDARY);
-      doc.text(`${count}x`, MARGIN + 80, dy);
-      dy += 5.5;
+      doc.text(`${count}× ${formatDuration(durationSeconds)}`, bx + chartBarW + 2, dy);
+      dy += 6;
     }
   }
 
@@ -373,64 +399,64 @@ function renderPage2(doc: jsPDF, data: CertificateData, font: string) {
     doc.text('Enable AI opt-in in Settings to get detailed analysis.', PAGE_W / 2, 92, {
       align: 'center',
     });
-    return;
-  }
-
-  // ── Summary (Vietnamese) ──
-  doc.setFont(font, 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...TEXT_COLOR);
-  doc.text('Tóm tắt (Tiếng Việt)', MARGIN, y);
-  y += 7;
-  doc.setFont(font, 'normal');
-  doc.setFontSize(10);
-  const viLines = doc.splitTextToSize(aiAnalysis.summaryVi, PAGE_W - 2 * MARGIN);
-  doc.text(viLines, MARGIN, y);
-  y += viLines.length * 5 + 6;
-
-  // ── Summary (English) ──
-  doc.setFont(font, 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...TEXT_COLOR);
-  doc.text('Summary (English)', MARGIN, y);
-  y += 7;
-  doc.setFont(font, 'normal');
-  doc.setFontSize(10);
-  const enLines = doc.splitTextToSize(aiAnalysis.summaryEn, PAGE_W - 2 * MARGIN);
-  doc.text(enLines, MARGIN, y);
-  y += enLines.length * 5 + 6;
-
-  // ── Focus Pattern ──
-  if (aiAnalysis.focusPattern) {
+    y = 105;
+  } else {
+    // ── Summary (Vietnamese) ──
     doc.setFont(font, 'bold');
     doc.setFontSize(12);
     doc.setTextColor(...TEXT_COLOR);
-    doc.text('Focus Pattern', MARGIN, y);
+    doc.text('Tóm tắt (Tiếng Việt)', MARGIN, y);
     y += 7;
     doc.setFont(font, 'normal');
     doc.setFontSize(10);
-    const patternLines = doc.splitTextToSize(aiAnalysis.focusPattern, PAGE_W - 2 * MARGIN);
-    doc.text(patternLines, MARGIN, y);
-    y += patternLines.length * 5 + 6;
-  }
+    const viLines = doc.splitTextToSize(aiAnalysis.summaryVi, PAGE_W - 2 * MARGIN);
+    doc.text(viLines, MARGIN, y);
+    y += viLines.length * 5 + 6;
 
-  // ── Recommendations ──
-  if (aiAnalysis.recommendations.length > 0) {
+    // ── Summary (English) ──
     doc.setFont(font, 'bold');
     doc.setFontSize(12);
     doc.setTextColor(...TEXT_COLOR);
-    doc.text('Recommendations', MARGIN, y);
+    doc.text('Summary (English)', MARGIN, y);
     y += 7;
-
     doc.setFont(font, 'normal');
     doc.setFontSize(10);
-    for (const rec of aiAnalysis.recommendations) {
-      doc.setTextColor(...PRIMARY_COLOR);
-      doc.text('•', MARGIN + 2, y);
+    const enLines = doc.splitTextToSize(aiAnalysis.summaryEn, PAGE_W - 2 * MARGIN);
+    doc.text(enLines, MARGIN, y);
+    y += enLines.length * 5 + 6;
+
+    // ── Focus Pattern ──
+    if (aiAnalysis.focusPattern) {
+      doc.setFont(font, 'bold');
+      doc.setFontSize(12);
       doc.setTextColor(...TEXT_COLOR);
-      const recLines = doc.splitTextToSize(rec, PAGE_W - 2 * MARGIN - 10);
-      doc.text(recLines, MARGIN + 7, y);
-      y += recLines.length * 5 + 3;
+      doc.text('Focus Pattern', MARGIN, y);
+      y += 7;
+      doc.setFont(font, 'normal');
+      doc.setFontSize(10);
+      const patternLines = doc.splitTextToSize(aiAnalysis.focusPattern, PAGE_W - 2 * MARGIN);
+      doc.text(patternLines, MARGIN, y);
+      y += patternLines.length * 5 + 6;
+    }
+
+    // ── Recommendations ──
+    if (aiAnalysis.recommendations.length > 0) {
+      doc.setFont(font, 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...TEXT_COLOR);
+      doc.text('Recommendations', MARGIN, y);
+      y += 7;
+
+      doc.setFont(font, 'normal');
+      doc.setFontSize(10);
+      for (const rec of aiAnalysis.recommendations) {
+        doc.setTextColor(...PRIMARY_COLOR);
+        doc.text('•', MARGIN + 2, y);
+        doc.setTextColor(...TEXT_COLOR);
+        const recLines = doc.splitTextToSize(rec, PAGE_W - 2 * MARGIN - 10);
+        doc.text(recLines, MARGIN + 7, y);
+        y += recLines.length * 5 + 3;
+      }
     }
   }
 

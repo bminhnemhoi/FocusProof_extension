@@ -370,6 +370,8 @@ function renderWidget(
 // ============================================================
 
 export function showAlert(alert: AlertEvent): void {
+  console.warn(`[FocusProof Alert] ${alert.type}: ${alert.message}`);
+
   // Auto-create widget nếu chưa có (alert có thể đến trước WIDGET_UPDATE)
   if (!shadowRoot) {
     createWidget();

@@ -10,10 +10,20 @@
 import type { AIAnalysisInput, AIAnalysisResult, SessionData } from './types';
 import { computeSessionStats } from './focus';
 import { getApiKey } from './api-key';
+import { getSessionHistory } from './storage';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4o-mini';
-const MAX_TOKENS = 1024;
+const MAX_TOKENS_SINGLE = 1024;
+const MAX_TOKENS_TREND = 1536;
+
+/** Format thời gian domain (giây → chuỗi dễ đọc) */
+function formatDomainDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}p${s}s` : `${m}p`;
+}
 
 /**
  * Xây dựng AIAnalysisInput từ SessionData.
@@ -53,14 +63,22 @@ export function buildAnalysisInput(
 /**
  * Tạo system + user prompt cho GPT.
  */
-function buildPrompt(input: AIAnalysisInput): Array<{ role: string; content: string }> {
-  const systemPrompt = `You are FocusProof AI Analyst. Analyze focus session data and provide actionable insights.
+function buildPrompt(
+  input: AIAnalysisInput,
+  trendData?: { recentSessions: string; sevenDayTrend: string },
+): Array<{ role: string; content: string }> {
+  const systemPrompt = `Bạn là FocusCoach – huấn luyện viên tập trung cá nhân hóa, thân thiện và khích lệ.
+Ngôn ngữ: Tiếng Việt tự nhiên, gần gũi, giọng "bạn – mình".
+Giọng điệu: Tích cực, không phán xét, tập trung vào tiến bộ và giải pháp.
+Luôn bắt đầu bằng điểm tích cực. Dùng câu như "Bạn đang làm tốt ở…", "Mình thấy bạn hơi bị phân tâm vì…".
+Tránh câu máy móc kiểu "điểm hoạt động trung bình khá thấp". Đưa ra 3 gợi ý cụ thể, dễ thực hiện.
+
 Respond in JSON with exactly these fields:
 {
-  "summaryVi": "Tóm tắt phiên bằng tiếng Việt (2-3 câu)",
+  "summaryVi": "Tóm tắt thân thiện bằng tiếng Việt (2-3 câu, giọng coaching bạn-mình)",
   "summaryEn": "Session summary in English (2-3 sentences)",
-  "recommendations": ["Gợi ý cải thiện 1 (tiếng Việt)", "Gợi ý 2", "Gợi ý 3"],
-  "focusPattern": "Mô tả pattern tập trung ngắn gọn (tiếng Việt)"
+  "recommendations": ["Gợi ý 1 (tiếng Việt, khích lệ)", "Gợi ý 2", "Gợi ý 3"],
+  "focusPattern": "Mô tả pattern tập trung (tiếng Việt, thân thiện)"
 }
 Do NOT include any text outside the JSON object.`;
 
@@ -78,7 +96,7 @@ Do NOT include any text outside the JSON object.`;
 
   if (input.sampleSummary.topDomains.length > 0) {
     parts.push(
-      `Top Domains: ${input.sampleSummary.topDomains.map((d) => `${d.domain}(${d.count})`).join(', ')}`,
+      `Top Domains: ${input.sampleSummary.topDomains.map((d) => `${d.domain} (${d.count} lần – ~${formatDomainDuration(d.durationSeconds)})`).join(', ')}`,
     );
   }
 
@@ -90,6 +108,14 @@ Do NOT include any text outside the JSON object.`;
     parts.push(`\nVoice note summary: "${input.voiceNoteText}"`);
   }
 
+  if (trendData) {
+    parts.push('');
+    parts.push('--- Lịch sử & Xu hướng ---');
+    parts.push(`5 phiên gần nhất:\n${trendData.recentSessions}`);
+    parts.push(`Xu hướng 7 ngày: ${trendData.sevenDayTrend}`);
+    parts.push('Hãy so sánh phiên hiện tại với lịch sử, chỉ ra tiến bộ hoặc sụt giảm.');
+  }
+
   return [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: parts.join('\n') },
@@ -97,15 +123,63 @@ Do NOT include any text outside the JSON object.`;
 }
 
 /**
+ * Xây dựng dữ liệu xu hướng từ lịch sử session.
+ * Lấy 5 phiên gần nhất (trừ phiên hiện tại) + xu hướng 7 ngày.
+ */
+async function buildTrendData(currentSessionId: string): Promise<{
+  recentSessions: string;
+  sevenDayTrend: string;
+}> {
+  const history = await getSessionHistory();
+  // Loại phiên hiện tại khỏi lịch sử
+  const past = history.filter((s) => s.id !== currentSessionId);
+
+  // 5 phiên gần nhất
+  const recent5 = past.slice(-5);
+  const recentSessions =
+    recent5.length > 0
+      ? recent5
+          .map((s) => {
+            const score = s.finalScore ?? 0;
+            const date = new Date(s.startTime).toLocaleDateString('vi-VN');
+            const dur = s.config.durationMinutes;
+            return `${date}: "${s.config.taskName}" – ${score}/100 (${dur}ph, ${s.config.mode})`;
+          })
+          .join('\n')
+      : 'Chưa có phiên trước đó.';
+
+  // Xu hướng 7 ngày
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekSessions = past.filter((s) => s.startTime >= sevenDaysAgo);
+  let sevenDayTrend: string;
+  if (weekSessions.length >= 2) {
+    const avgScore = Math.round(
+      weekSessions.reduce((sum, s) => sum + (s.finalScore ?? 0), 0) / weekSessions.length,
+    );
+    const totalMinutes = weekSessions.reduce((sum, s) => sum + s.config.durationMinutes, 0);
+    sevenDayTrend = `${weekSessions.length} phiên trong 7 ngày, điểm trung bình: ${avgScore}/100, tổng ${totalMinutes} phút tập trung.`;
+  } else {
+    sevenDayTrend = 'Chưa đủ dữ liệu 7 ngày (cần ít nhất 2 phiên).';
+  }
+
+  return { recentSessions, sevenDayTrend };
+}
+
+/**
  * Gọi GPT-4o-mini API và parse kết quả.
  * Chỉ gọi khi user đã opt-in.
  *
+ * @param session - Phiên cần phân tích
+ * @param typedContent - Text đã gõ (optional)
+ * @param voiceNoteText - Voice note (optional)
+ * @param options - { includeTrend: true } để bật phân tích xu hướng
  * @throws Error nếu API key chưa cấu hình, network lỗi, hoặc response invalid
  */
 export async function analyzeSession(
   session: SessionData,
   typedContent?: string,
   voiceNoteText?: string,
+  options?: { includeTrend?: boolean },
 ): Promise<AIAnalysisResult> {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -113,7 +187,12 @@ export async function analyzeSession(
   }
 
   const input = buildAnalysisInput(session, typedContent, voiceNoteText);
-  const messages = buildPrompt(input);
+
+  // Nếu bật trend analysis, lấy dữ liệu lịch sử
+  const trendData = options?.includeTrend ? await buildTrendData(session.id) : undefined;
+
+  const messages = buildPrompt(input, trendData);
+  const maxTokens = trendData ? MAX_TOKENS_TREND : MAX_TOKENS_SINGLE;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30_000);
@@ -129,7 +208,7 @@ export async function analyzeSession(
       body: JSON.stringify({
         model: MODEL,
         messages,
-        max_tokens: MAX_TOKENS,
+        max_tokens: maxTokens,
         temperature: 0.7,
       }),
       signal: controller.signal,

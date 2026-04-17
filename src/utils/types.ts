@@ -194,7 +194,7 @@ export interface AIAnalysisInput {
     avgActivity: number;
     tabComplianceRate: number;
     alertCount: number;
-    topDomains: Array<{ domain: string; count: number }>;
+    topDomains: Array<{ domain: string; count: number; durationSeconds: number }>;
   };
   typedContent?: string; // 500 ký tự cuối
   voiceNoteText?: string;

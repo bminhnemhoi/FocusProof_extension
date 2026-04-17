@@ -133,6 +133,40 @@ function startTracking() {
     { signal, passive: true },
   );
 
+  // --- Input events (catches typing in contentEditable, Monaco editors, etc.) ---
+  document.addEventListener(
+    'input',
+    () => {
+      if (!isComposing) {
+        markActive();
+      }
+    },
+    { signal, passive: true },
+  );
+
+  // --- Focus/blur tracking (detect window & element focus changes) ---
+  window.addEventListener(
+    'focus',
+    () => { markActive(); },
+    { signal },
+  );
+
+  document.addEventListener(
+    'focusin',
+    () => { markActive(); },
+    { signal, passive: true },
+  );
+
+  // --- Touch events (mobile / touch-enabled devices) ---
+  document.addEventListener(
+    'touchstart',
+    () => {
+      activityBuffer.clicks++;
+      markActive();
+    },
+    { signal, passive: true },
+  );
+
   // --- Paste ---
   document.addEventListener(
     'paste',

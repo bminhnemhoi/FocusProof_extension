@@ -148,7 +148,7 @@ export interface SessionStats {
   avgActivityScore: number;
   tabComplianceRate: number;
   alertCount: number;
-  topDomains: Array<{ domain: string; count: number }>;
+  topDomains: Array<{ domain: string; count: number; durationSeconds: number }>;
 }
 
 /**
@@ -196,7 +196,7 @@ export function computeSessionStats(session: SessionData): SessionStats {
     }
   }
   const topDomains = Array.from(domainMap.entries())
-    .map(([domain, count]) => ({ domain, count }))
+    .map(([domain, count]) => ({ domain, count, durationSeconds: count * 6 }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 

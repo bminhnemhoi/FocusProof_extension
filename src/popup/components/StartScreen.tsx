@@ -28,7 +28,7 @@ const MODE_PRESETS: Array<{
   { mode: 'video-lecture', label: 'Xem bài giảng', icon: '🎥', description: 'YouTube, Coursera, Udemy, Zoom' },
 ];
 
-const DURATION_OPTIONS = [15, 25, 45, 60, 90, 120];
+const DURATION_OPTIONS = [3, 15, 25, 45, 60, 90, 120];
 
 export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
   const [taskName, setTaskName] = useState('');
@@ -113,6 +113,7 @@ export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
               type="button"
               role="radio"
               aria-checked={durationMinutes === d}
+              title={d === 3 ? 'Test nhanh – kiểm tra camera & tập trung' : undefined}
             >
               {d} phút
             </button>
