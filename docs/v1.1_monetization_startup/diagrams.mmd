@@ -1,0 +1,176 @@
+%% =============================================================
+%% FOCUSPROOF v1.1 — MERMAID DIAGRAMS
+%% Dùng cho hồ sơ TECH STARTUP CHALLENGER 2026
+%% =============================================================
+
+%% ============== DIAGRAM 1: USER FLOW ==========================
+%% File output gợi ý: diagram_user_flow.png
+flowchart TD
+    A[👤 User mở Chrome Extension] --> B{Đã đăng nhập?}
+    B -- Chưa --> C[AuthModal: Signup/Login]
+    C --> D[Nhận 100 Credit + bắt đầu Trial 7 ngày]
+    B -- Rồi --> E[StartScreen]
+    D --> E
+    E --> F[Chọn Task + Goal Mode + Allowed Domains]
+    F --> G[Modal hướng dẫn Camera]
+    G --> H{Cho phép Camera?}
+    H -- Có --> I[Session: Face + Activity + Tab Tracking]
+    H -- Không --> J[Camera-Off Mode: Activity 60% + Tab 40%]
+    J --> I
+    I --> K[Floating Widget realtime + Alert theo Goal]
+    K --> L[User nhấn STOP]
+    L --> M[ResultScreen: Focus Score + Pie Chart]
+    M --> N{Nhấn AI Analysis?}
+    N -- Có --> O{Plan = Pro/Team hoặc còn Trial?}
+    O -- Có --> P[Gọi GPT-4o-mini → Hiển thị phân tích]
+    O -- Không --> Q{Đủ 20 Credit?}
+    Q -- Có --> R[Dialog xác nhận → Trừ 20 Credit → Gọi AI]
+    Q -- Không --> S[💳 CreditExhaustedPopup]
+    S --> T[🛒 Mua ngay / 🎁 Mời bạn / Bỏ qua]
+    P --> U[Generate PDF Certificate 2 trang + QR]
+    R --> U
+    N -- Không --> U
+    U --> V[Lưu lịch sử + Cập nhật Streak/Badges]
+    V --> W[Chia sẻ PDF / QR]
+
+
+%% ============== DIAGRAM 2: SYSTEM ARCHITECTURE ================
+%% File output gợi ý: diagram_architecture.png
+flowchart LR
+    subgraph EXT["🧩 CHROME EXTENSION (Manifest V3)"]
+        P[Popup React 19]
+        CS[Content Script<br/>Activity + Widget]
+        OFF[Offscreen Document<br/>Camera + MediaPipe]
+        BG[Background Service Worker<br/>Session + Tracking + Goal Eval]
+        ST[(chrome.storage.local<br/>Session, Plan cache, Credit cache)]
+        P --- ST
+        BG --- ST
+        CS --- BG
+        OFF --- BG
+        P --- BG
+    end
+
+    subgraph SB["☁️ SUPABASE BACKEND"]
+        AUTH[Auth JWT]
+        DB[(PostgreSQL + RLS<br/>users, teams, credits,<br/>licenses, referrals,<br/>session_summaries)]
+        EF[Edge Functions<br/>credits-deduct, license-validate,<br/>payment-webhook, team-report]
+        AUTH --- DB
+        EF --- DB
+    end
+
+    subgraph WEB["🌐 WEB APPLICATION (Next.js + Vercel)"]
+        LP[Landing Page]
+        PR[Pricing Page 3 cột]
+        TD[Team Dashboard]
+    end
+
+    subgraph PAY["💳 PAYMENT"]
+        ST2[Stripe Checkout / LemonSqueezy]
+    end
+
+    subgraph AI["🤖 AI SERVICES"]
+        GPT[OpenAI GPT-4o-mini]
+        MP[MediaPipe BlazeFace WASM]
+    end
+
+    EXT -->|HTTPS + JWT| EF
+    EXT -->|API call có credit| GPT
+    OFF -.local.- MP
+    PR --> ST2
+    ST2 -->|Webhook signed| EF
+    TD --> EF
+    LP --> PR
+
+
+%% ============== DIAGRAM 3: BUSINESS MODEL FLOW ================
+%% File output gợi ý: diagram_business_model.png
+flowchart TB
+    U[👥 Người dùng tiềm năng<br/>Sinh viên • Freelancer • Remote worker • Tổ chức]
+    
+    U --> ACQ[📢 Acquisition<br/>Chrome Web Store SEO • Reddit • TikTok<br/>Product Hunt • Referral viral • Content blog]
+    
+    ACQ --> FREE[🆓 FREE TIER<br/>7 ngày trial đầy đủ + 100 Credit]
+    
+    FREE --> ENG{Engagement<br/>≥3 sessions trong trial?}
+    ENG -- Không --> CHURN1[😢 Churn]
+    ENG -- Có --> RET[Retention 7d–30d]
+    
+    RET --> EXH{Hết Credit /<br/>Hết Trial?}
+    EXH -- Chưa --> RET
+    EXH -- Rồi --> POPUP[💳 CreditExhaustedPopup]
+    
+    POPUP --> CONV{Quyết định?}
+    CONV --> REF[🎁 Mời bạn → +20 Credit<br/>Viral loop]
+    CONV --> SKIP[😐 Tiếp tục Free<br/>không AI]
+    CONV --> PRO[⭐ Upgrade Pro $4.99/th]
+    CONV --> TEAM[🏢 Upgrade Team $3.99/seat]
+    
+    REF --> FREE
+    PRO --> REV1[💰 MRR + LTV $59.88]
+    TEAM --> REV2[💰 MRR per seat]
+    
+    REV1 --> COST[💸 Cost: Supabase + OpenAI + Stripe<br/>Gross margin ~85%]
+    REV2 --> COST
+    COST --> PROFIT[📈 Profit → Reinvest<br/>Marketing + Product + Team]
+    PROFIT --> ACQ
+
+
+%% ============== DIAGRAM 4: BUSINESS MODEL CANVAS ==============
+%% File output gợi ý: diagram_bmc.png
+%% (Vẽ dạng grid 9 ô theo chuẩn BMC của Osterwalder)
+flowchart TB
+    subgraph BMC["BUSINESS MODEL CANVAS — FocusProof v1.1"]
+        direction TB
+        
+        subgraph TOP[" "]
+            direction LR
+            KP["🤝 KEY PARTNERS<br/>• Khoa CNTT TDTU<br/>• Supabase, Vercel<br/>• Stripe / LemonSqueezy<br/>• OpenAI<br/>• MediaPipe (Google)<br/>• Cộng đồng productivity VN"]
+            KA["⚙️ KEY ACTIVITIES<br/>• Phát triển extension<br/>• Vận hành backend<br/>• AI prompt engineering<br/>• Marketing content<br/>• Customer support<br/>• Anti-fraud monitoring"]
+            VP["🎯 VALUE PROPOSITIONS<br/>• Đo tập trung KHÁCH QUAN<br/>  3 tín hiệu (Camera+Activity+Tab)<br/>• Chứng chỉ PDF có QR + SHA-256<br/>  XÁC THỰC duy nhất thị trường<br/>• AI cá nhân hóa khuyến nghị<br/>• 100% PRIVACY-FIRST<br/>  (không screenshot, không keylog)<br/>• Giá rẻ nhất phân khúc Pro $4.99"]
+            CR["💞 CUSTOMER RELATIONSHIPS<br/>• Self-service (extension + web)<br/>• Email support (Free/Pro)<br/>• Chat support (Team)<br/>• Cộng đồng Discord/FB Group<br/>• Gamification giữ chân"]
+            CS["👥 CUSTOMER SEGMENTS<br/>• Sinh viên học online<br/>• Freelancer (UpWork, Fiverr)<br/>• Remote worker / lập trình viên<br/>• Tổ chức giáo dục<br/>• Doanh nghiệp SME remote"]
+        end
+
+        subgraph MID[" "]
+            direction LR
+            KR["🏛️ KEY RESOURCES<br/>• Codebase v1.0 (đã có)<br/>• Supabase backend<br/>• OpenAI API account<br/>• Domain focusproof.com<br/>• Brand & community<br/>• Đội ngũ founder + part-time"]
+            CH["📡 CHANNELS<br/>• Chrome Web Store (chính)<br/>• Website focusproof.com<br/>• Product Hunt launch<br/>• Reddit (r/productivity)<br/>• TikTok / YouTube Shorts<br/>• Referral từ user (viral)<br/>• Đại học, doanh nghiệp (B2B)"]
+        end
+
+        subgraph BOT[" "]
+            direction LR
+            COST["💸 COST STRUCTURE<br/>• Supabase $0–25/th • Vercel $0–20/th<br/>• OpenAI API ~$5–60/th • Stripe 2.9%+$0.30/giao dịch<br/>• Domain $12/năm • Marketing $0–150/th<br/>• Total OPEX: $6/th (early) → $310/th (scale)<br/>• CAPEX: ~$67 one-time"]
+            REV["💰 REVENUE STREAMS<br/>• Pro Subscription: $4.99/tháng hoặc $49/năm<br/>• Team Subscription: $3.99/người/tháng (≥5 ng)<br/>• Custom Branding (Team): bao gồm trong giá<br/>• Năm 1: $6,165 doanh thu, MRR $1,287<br/>• Gross margin ~85% • LTV/CAC ~40×"]
+        end
+    end
+
+
+%% ============== DIAGRAM 5 (BONUS): CREDIT FLOW ================
+%% File output gợi ý: diagram_credit_flow.png
+sequenceDiagram
+    participant U as User
+    participant E as Extension Popup
+    participant B as Background Worker
+    participant S as Supabase Edge Function
+    participant DB as PostgreSQL
+    participant AI as OpenAI GPT-4o-mini
+
+    U->>E: Nhấn "AI Analysis (20 Credit)"
+    E->>S: POST /credits/deduct (JWT + idempotency_key)
+    S->>DB: SELECT plan, credits, trial_end FROM users WHERE id=:id
+    DB-->>S: { plan: 'free', credits: 80, trial_end: 2026-04-25 }
+    
+    alt Trial còn hạn hoặc Pro/Team
+        S-->>E: { ok: true, free: true }
+    else Hết Trial + đủ Credit
+        S->>DB: UPDATE credits = credits - 20 (atomic)
+        S->>DB: INSERT credit_transactions (type='ai_single', amount=-20)
+        S-->>E: { ok: true, balance: 60 }
+    else Hết Trial + không đủ Credit
+        S-->>E: { error: 'INSUFFICIENT_CREDITS', required: 20, current: 5 }
+        E->>U: Hiển thị CreditExhaustedPopup<br/>(Mua ngay / Mời bạn / Bỏ qua)
+    end
+    
+    E->>AI: POST /v1/chat/completions (session data)
+    AI-->>E: AI analysis text
+    E->>U: Hiển thị kết quả + Generate PDF Page 2

@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Base reset + global tokens ===== */
+@layer base {
+  html,
+  body {
+    @apply bg-bg text-slate-100;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  ::selection {
+    @apply bg-brand-500/30 text-white;
+  }
+
+  /* Custom scrollbar (dark) */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0a0e14;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1f2a37;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a3a4d;
+  }
+}
+
+/* ===== Reusable component classes ===== */
+@layer components {
+  .container-narrow {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700;
+  }
+
+  .btn-secondary {
+    @apply btn border border-bg-border bg-bg-elevated text-slate-100 hover:bg-bg-border;
+  }
+
+  .btn-ghost {
+    @apply btn text-slate-300 hover:bg-bg-elevated hover:text-white;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  .card {
+    @apply rounded-2xl border border-bg-border bg-bg-surface p-6 shadow-card;
+  }
+}
+
+/* ===== Background gradient (hero) ===== */
+.hero-glow {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(47, 128, 255, 0.15), transparent 50%),
+    radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.12), transparent 50%);
+}
