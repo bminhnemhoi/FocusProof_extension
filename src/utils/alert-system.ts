@@ -13,6 +13,9 @@
 import type { AlertType, AlertEvent, GoalConfig } from './types';
 import { FACE_LOST_THRESHOLD_MS, IDLE_THRESHOLD_MS } from './types';
 
+/** Khoảng cách giữa các lần nhắc lại cảnh báo (30 giây) */
+const ALERT_REPEAT_INTERVAL_MS = 30_000;
+
 export interface AlertState {
   /** Timestamp lần cuối phát hiện mặt */
   lastFaceDetectedAt: number;
@@ -22,6 +25,8 @@ export interface AlertState {
   activeAlerts: Set<AlertType>;
   /** Lịch sử tất cả alerts trong session */
   alertHistory: AlertEvent[];
+  /** Timestamp lần cuối phát alert cho từng loại (dùng cho repeat) */
+  lastAlertAt: Record<string, number>;
 }
 
 /** Khởi tạo state mới cho mỗi session */
@@ -32,6 +37,7 @@ export function createAlertState(): AlertState {
     lastActivityAt: now,
     activeAlerts: new Set(),
     alertHistory: [],
+    lastAlertAt: {},
   };
 }
 
@@ -91,10 +97,13 @@ export function checkAlerts(
     }
   }
 
-  // --- Tab Violation ---
+  // --- Tab Violation (nhắc lại mỗi 30s nếu vẫn trên tab không phù hợp) ---
   if (!opts.isOutsideChrome && !opts.goalCompliant) {
-    if (!state.activeAlerts.has('tab-violation')) {
+    const lastFired = state.lastAlertAt['tab-violation'] ?? 0;
+    const shouldFire = !state.activeAlerts.has('tab-violation') || (now - lastFired > ALERT_REPEAT_INTERVAL_MS);
+    if (shouldFire) {
       state.activeAlerts.add('tab-violation');
+      state.lastAlertAt['tab-violation'] = now;
       const alert: AlertEvent = {
         type: 'tab-violation',
         timestamp: now,
@@ -105,12 +114,16 @@ export function checkAlerts(
     }
   } else if (!opts.isOutsideChrome && opts.goalCompliant) {
     state.activeAlerts.delete('tab-violation');
+    delete state.lastAlertAt['tab-violation'];
   }
 
-  // --- Outside Chrome ---
+  // --- Outside Chrome (nhắc lại mỗi 30s) ---
   if (opts.isOutsideChrome && !opts.goalCompliant) {
-    if (!state.activeAlerts.has('outside-chrome')) {
+    const lastFired = state.lastAlertAt['outside-chrome'] ?? 0;
+    const shouldFire = !state.activeAlerts.has('outside-chrome') || (now - lastFired > ALERT_REPEAT_INTERVAL_MS);
+    if (shouldFire) {
       state.activeAlerts.add('outside-chrome');
+      state.lastAlertAt['outside-chrome'] = now;
       const alert: AlertEvent = {
         type: 'outside-chrome',
         timestamp: now,
@@ -121,6 +134,7 @@ export function checkAlerts(
     }
   } else if (!opts.isOutsideChrome) {
     state.activeAlerts.delete('outside-chrome');
+    delete state.lastAlertAt['outside-chrome'];
   }
 
   return newAlerts;

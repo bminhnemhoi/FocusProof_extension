@@ -25,6 +25,11 @@ let isMinimized = false;
 let isDragging = false;
 let dragOffset = { x: 0, y: 0 };
 
+// Local countdown state — đếm ngược mỗi giây giữa các WIDGET_UPDATE (6s)
+let lastUpdateData: WidgetUpdatePayload | null = null;
+let lastUpdateTimestamp = 0;
+let countdownIntervalId: ReturnType<typeof setInterval> | null = null;
+
 // ============================================================
 // Styles (injected into Shadow DOM)
 // ============================================================
@@ -243,6 +248,11 @@ export function createWidget(): void {
 }
 
 export function destroyWidget(): void {
+  if (countdownIntervalId) {
+    clearInterval(countdownIntervalId);
+    countdownIntervalId = null;
+  }
+  lastUpdateData = null;
   if (hostElement) {
     hostElement.remove();
     hostElement = null;
@@ -264,14 +274,57 @@ export interface WidgetUpdatePayload {
 }
 
 export function updateWidget(data: WidgetUpdatePayload): void {
+  // Auto-create widget nếu chưa có (xảy ra khi page navigate giữa session)
+  if (!shadowRoot) {
+    createWidget();
+  }
+  if (!shadowRoot) return; // createWidget failed
+
+  // Lưu data + timestamp để local countdown tính thời gian chính xác
+  lastUpdateData = data;
+  lastUpdateTimestamp = Date.now();
+
+  // Bắt đầu local countdown nếu chưa chạy
+  if (!countdownIntervalId) {
+    countdownIntervalId = setInterval(localCountdownTick, 1000);
+  }
+
+  renderWidget(data.focusScore, data.timeRemaining, data.faceDetected, data.isIdle, data.goalCompliant);
+}
+
+/** Local countdown: cập nhật timer mỗi giây giữa 2 lần background gửi WIDGET_UPDATE */
+function localCountdownTick(): void {
+  if (!lastUpdateData || !shadowRoot) return;
+  if (isMinimized) return; // Minimized chỉ hiển score, không cần tick
+
+  const elapsed = Date.now() - lastUpdateTimestamp;
+  const remaining = Math.max(0, lastUpdateData.timeRemaining - elapsed);
+
+  // Chỉ update DOM phần timer, không rebuild toàn bộ HTML
+  const timerEl = shadowRoot.querySelector('.fp-timer') as HTMLElement | null;
+  if (timerEl) {
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+}
+
+/** Render/re-render widget với dữ liệu cho trước */
+function renderWidget(
+  focusScore: number,
+  timeRemaining: number,
+  faceDetected: boolean,
+  isIdle: boolean,
+  goalCompliant: boolean,
+): void {
   if (!shadowRoot) return;
 
   const container = shadowRoot.getElementById('fp-container');
   if (!container) return;
 
-  const scorePercent = Math.round(data.focusScore * 100);
-  const minutes = Math.floor(data.timeRemaining / 60000);
-  const seconds = Math.floor((data.timeRemaining % 60000) / 1000);
+  const scorePercent = Math.round(focusScore * 100);
+  const minutes = Math.floor(timeRemaining / 60000);
+  const seconds = Math.floor((timeRemaining % 60000) / 1000);
   const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   if (isMinimized) {
@@ -280,15 +333,15 @@ export function updateWidget(data: WidgetUpdatePayload): void {
       isMinimized = false;
       container.classList.remove('fp-minimized');
       container.onclick = null;
-      updateWidget(data);
+      renderWidget(focusScore, timeRemaining, faceDetected, isIdle, goalCompliant);
     };
   } else {
     container.innerHTML = buildExpandedHTML(
       scorePercent,
       timeStr,
-      data.faceDetected,
-      data.isIdle,
-      data.goalCompliant,
+      faceDetected,
+      isIdle,
+      goalCompliant,
     );
     // Re-bind minimize button
     const minBtn = shadowRoot.getElementById('fp-minimize');
@@ -302,7 +355,7 @@ export function updateWidget(data: WidgetUpdatePayload): void {
           isMinimized = false;
           container.classList.remove('fp-minimized');
           container.onclick = null;
-          updateWidget(data);
+          renderWidget(focusScore, timeRemaining, faceDetected, isIdle, goalCompliant);
         };
       };
     }
@@ -314,6 +367,10 @@ export function updateWidget(data: WidgetUpdatePayload): void {
 // ============================================================
 
 export function showAlert(alert: AlertEvent): void {
+  // Auto-create widget nếu chưa có (alert có thể đến trước WIDGET_UPDATE)
+  if (!shadowRoot) {
+    createWidget();
+  }
   if (!shadowRoot) return;
 
   const container = shadowRoot.getElementById('fp-container');

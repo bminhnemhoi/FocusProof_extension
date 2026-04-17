@@ -162,7 +162,7 @@ export default function DiagnosticDashboard({ onBack }: DiagnosticDashboardProps
       <div className="diag-panel" style={{ background: 'var(--bg-secondary)', marginBottom: 12 }}>
         <div className="diag-panel-body">
           <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-            ⚠️ Camera test trong popup có thể bị lỗi vì Chrome đóng popup khi hiện permission dialog. Mở trang diagnostic đầy đủ:
+            ⚠️ Camera test trong popup có thể bị lỗi vì Chrome đóng popup khi hiện permission dialog. Mở trang cài đặt camera:
           </p>
           <button
             className="btn btn-primary btn-full"
@@ -171,27 +171,7 @@ export default function DiagnosticDashboard({ onBack }: DiagnosticDashboardProps
               chrome.tabs.create({ url: chrome.runtime.getURL('camera-diagnostic.html') });
             }}
           >
-            🔬 Mở Camera Diagnostic (Full Page)
-          </button>
-          <button
-            className="btn btn-primary btn-full"
-            type="button"
-            style={{ marginTop: 6, background: 'var(--warning)' }}
-            onClick={() => {
-              chrome.tabs.create({ url: chrome.runtime.getURL('alert-diagnostic.html') });
-            }}
-          >
-            🔔 Mở Alert & Goal Diagnostic (Full Page)
-          </button>
-          <button
-            className="btn btn-primary btn-full"
-            type="button"
-            style={{ marginTop: 6, background: '#8b5cf6' }}
-            onClick={() => {
-              chrome.tabs.create({ url: chrome.runtime.getURL('widget-diagnostic.html') });
-            }}
-          >
-            🧩 Mở Widget Diagnostic (Full Page)
+            📷 Cài đặt & Kiểm tra Camera
           </button>
         </div>
       </div>

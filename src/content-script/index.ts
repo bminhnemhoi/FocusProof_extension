@@ -20,6 +20,23 @@ import {
 import type { WidgetUpdatePayload } from './widget';
 
 // ============================================================
+// Duplicate Injection Guard
+// ============================================================
+// Mỗi lần inject tạo execution context mới.
+// Dùng DOM marker để tránh đăng ký listener trùng lặp.
+const GUARD_ATTR = '__focusproof_cs_loaded__';
+if ((window as unknown as Record<string, unknown>)[GUARD_ATTR]) {
+  // Đã có content script trên page này → skip
+  // Vẫn log để debug, nhưng không setup listeners
+  console.warn('[FocusProof] Content script already loaded, skipping duplicate');
+} else {
+  (window as unknown as Record<string, unknown>)[GUARD_ATTR] = true;
+  _initContentScript();
+}
+
+function _initContentScript(): void {
+
+// ============================================================
 // Activity Tracking State
 // ============================================================
 
@@ -240,3 +257,5 @@ chrome.runtime.onMessage.addListener(
 );
 
 console.warn('[FocusProof] Content script loaded');
+
+} // end _initContentScript

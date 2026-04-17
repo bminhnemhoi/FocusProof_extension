@@ -57,7 +57,14 @@ export async function getSessionHistory(): Promise<SessionData[]> {
 export async function addToHistory(session: SessionData): Promise<void> {
   const history = await getSessionHistory();
   history.push(session);
-  await set('sessionHistory', history);
+
+  // Pruning: giữ tối đa 100 phiên gần nhất để tránh vượt quota 10MB
+  const MAX_SESSIONS = 100;
+  const pruned = history.length > MAX_SESSIONS
+    ? history.slice(history.length - MAX_SESSIONS)
+    : history;
+
+  await set('sessionHistory', pruned);
 }
 
 // ============================================================

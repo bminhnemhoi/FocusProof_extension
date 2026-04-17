@@ -22,12 +22,41 @@ import * as alertManager from './alert-manager';
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   if (!sessionManager.isRunning()) return;
+
+  // Dọn widget ở tab CŨ — fire-and-forget (không await để không chậm)
+  const prevTabId = tabTracker.getState().tabId;
+  if (prevTabId && prevTabId !== activeInfo.tabId) {
+    chrome.tabs.sendMessage(prevTabId, { type: 'STOP_SESSION', payload: null }).catch(() => {});
+  }
+
   await tabTracker.onTabActivated(activeInfo);
+
+  // Inject content script + widget vào tab mới
+  const injected = await sessionManager.ensureContentScript(activeInfo.tabId);
+  if (injected) {
+    try {
+      await chrome.tabs.sendMessage(activeInfo.tabId, {
+        type: 'START_SESSION',
+        payload: null,
+      });
+    } catch {
+      // Content script may already be tracking on this tab
+    }
+  }
 });
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (!sessionManager.isRunning()) return;
   tabTracker.onTabUpdated(_tabId, changeInfo, tab);
+
+  // Khi page load xong trên tab active → re-inject widget (xử lý navigation giữa session)
+  if (changeInfo.status === 'complete' && tab.active && tab.url && /^https?:/.test(tab.url)) {
+    sessionManager.ensureContentScript(_tabId).then((ok) => {
+      if (ok) {
+        chrome.tabs.sendMessage(_tabId, { type: 'START_SESSION', payload: null }).catch(() => {});
+      }
+    }).catch(() => {});
+  }
 });
 
 chrome.windows.onFocusChanged.addListener((windowId) => {

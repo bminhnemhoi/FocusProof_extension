@@ -44,7 +44,7 @@ let lastFinishedSession: SessionData | null = null;
  * Nếu tab đã mở trước khi extension load/reload, declarative content_scripts
  * sẽ KHÔNG tự inject → dùng chrome.scripting.executeScript fallback.
  */
-async function ensureContentScript(tabId: number): Promise<boolean> {
+export async function ensureContentScript(tabId: number): Promise<boolean> {
   // 0. Kiểm tra tab URL — content scripts không chạy trên chrome:// và chrome-extension://
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -92,6 +92,40 @@ async function ensureContentScript(tabId: number): Promise<boolean> {
     // Injection succeeded but PING failed — still proceed optimistically
     return true;
   }
+}
+
+/** URL pattern cho các trang KHÔNG thể inject content script */
+const NON_INJECTABLE_RE = /^(chrome|chrome-extension|edge|about|devtools|file):/i;
+
+/**
+ * Tìm tab web có thể inject content script.
+ * Ưu tiên: 1) tab active hiện tại, 2) tab web gần nhất trong cửa sổ hiện tại.
+ */
+export async function findInjectableTab(): Promise<number | null> {
+  // 1. Thử tab active trước
+  try {
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (active?.id && active.url && !NON_INJECTABLE_RE.test(active.url)) {
+      return active.id;
+    }
+  } catch { /* ignore */ }
+
+  // 2. Fallback: tìm tab web gần nhất trong cửa sổ hiện tại
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    // Ưu tiên tab có lastAccessed gần nhất hoặc index cao nhất
+    const webTabs = tabs
+      .filter((t) => t.id && t.url && !NON_INJECTABLE_RE.test(t.url))
+      .sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+    if (webTabs.length > 0 && webTabs[0].id) {
+      console.warn('[BG] Active tab not injectable, using fallback tab:', webTabs[0].url);
+      return webTabs[0].id;
+    }
+  } catch { /* ignore */ }
+
+  // 3. Không tìm được tab nào injectable
+  console.warn('[BG] No injectable web tab found');
+  return null;
 }
 
 // ============================================================
@@ -203,11 +237,7 @@ async function doSample(): Promise<void> {
     goalConfig,
   });
 
-  if (newAlerts.length > 0 && tabState.tabId) {
-    await alertManager.sendToContentScript(tabState.tabId, newAlerts);
-  }
-
-  // 10. Send widget update to content script
+  // 10. Send widget update TRƯỚC alerts (widget phải tồn tại để hiển thị toast)
   const elapsed = Date.now() - currentSession.startTime;
   const totalMs = config.durationMinutes * 60 * 1000;
   const timeRemaining = Math.max(0, totalMs - elapsed);
@@ -229,12 +259,17 @@ async function doSample(): Promise<void> {
     // Content script may not be available
   }
 
-  // 11. Persist session periodically (every 5 samples ≈ 30s)
+  // 11. Send alerts SAU widget update
+  if (newAlerts.length > 0 && tabState.tabId) {
+    await alertManager.sendToContentScript(tabState.tabId, newAlerts);
+  }
+
+  // 12. Persist session periodically (every 5 samples ≈ 30s)
   if (currentSession.samples.length % 5 === 0) {
     await storage.saveCurrentSession(currentSession);
   }
 
-  // 12. Auto-stop if duration reached
+  // 13. Auto-stop if duration reached
   if (timeRemaining <= 0) {
     await stopSession();
   }
@@ -326,21 +361,25 @@ export async function startSession(config: SessionConfig) {
   }
 
   // Notify content script to start tracking
-  const tabState = tabTracker.getState();
-  if (tabState.tabId) {
-    const injected = await ensureContentScript(tabState.tabId);
+  // Tìm tab web có thể inject — không phụ thuộc vào tab active (có thể là chrome://)
+  const targetTabId = await findInjectableTab();
+  if (targetTabId) {
+    const injected = await ensureContentScript(targetTabId);
     if (injected) {
       try {
-        await chrome.tabs.sendMessage(tabState.tabId, {
+        await chrome.tabs.sendMessage(targetTabId, {
           type: 'START_SESSION',
           payload: null,
         });
+        console.warn('[BG] Widget injected on tab', targetTabId);
       } catch {
         console.warn('[BG] START_SESSION send failed after injection');
       }
     } else {
-      console.warn('[BG] Content script not available on tab', tabState.tabId);
+      console.warn('[BG] Content script not available on tab', targetTabId);
     }
+  } else {
+    console.warn('[BG] No web tab found — widget will appear when you switch to a web page');
   }
 
   await storage.saveCurrentSession(currentSession);
@@ -387,25 +426,25 @@ export async function stopSession() {
   // Save as last finished session (popup can read on reopen)
   lastFinishedSession = result as SessionData;
 
-  // Capture tab state BEFORE cleanup (tabId stays valid after reset)
-  const tabState = tabTracker.getState();
-
   // Cleanup internal state
   currentSession = null;
   alertManager.reset();
   tabTracker.reset();
   await storage.clearCurrentSession();
 
-  // Stop content script tracking
-  if (tabState.tabId) {
-    try {
-      await chrome.tabs.sendMessage(tabState.tabId, {
-        type: 'STOP_SESSION',
-        payload: null,
-      });
-    } catch {
-      // Content script may not be available
-    }
+  // Stop content script tracking — gửi STOP_SESSION đến TẤT CẢ tab
+  // (widget có thể tồn tại trên nhiều tab mà user đã ghé qua trong session)
+  try {
+    const allTabs = await chrome.tabs.query({});
+    await Promise.allSettled(
+      allTabs.map((tab) =>
+        tab.id
+          ? chrome.tabs.sendMessage(tab.id, { type: 'STOP_SESSION', payload: null })
+          : Promise.resolve(),
+      ),
+    );
+  } catch {
+    // Tabs API may not be available
   }
 
   // Destroy offscreen document
