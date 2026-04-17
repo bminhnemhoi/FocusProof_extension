@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>FocusProof – Widget Diagnostic</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: #0f172a; color: #f1f5f9;
+      padding: 24px; max-width: 900px; margin: 0 auto;
+    }
+    h1 { font-size: 22px; margin-bottom: 8px; color: #a5b4fc; }
+    h2 { font-size: 16px; margin: 16px 0 8px; color: #94a3b8; }
+    .subtitle { color: #94a3b8; margin-bottom: 20px; font-size: 13px; }
+    .card {
+      background: #1e293b; border-radius: 12px;
+      padding: 16px; margin-bottom: 12px;
+      border: 1px solid #334155;
+    }
+    .card--ok { border-color: #22c55e; }
+    .card--err { border-color: #ef4444; }
+    .card--warn { border-color: #f59e0b; }
+    .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #334155; }
+    .row:last-child { border-bottom: none; }
+    .label { color: #94a3b8; font-size: 13px; }
+    .val { font-weight: 600; font-size: 13px; }
+    .val--ok { color: #22c55e; }
+    .val--err { color: #ef4444; }
+    .val--warn { color: #f59e0b; }
+    .val--info { color: #60a5fa; }
+    .log-box {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      padding: 12px; font-family: 'Consolas', monospace; font-size: 12px;
+      max-height: 400px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6;
+    }
+    .log-ok { color: #22c55e; }
+    .log-err { color: #ef4444; }
+    .log-warn { color: #f59e0b; }
+    .log-info { color: #60a5fa; }
+    button {
+      background: #6366f1; color: #fff; border: none; border-radius: 8px;
+      padding: 10px 20px; font-size: 14px; font-weight: 600;
+      cursor: pointer; margin: 4px;
+    }
+    button:hover { background: #4f46e5; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.btn-success { background: #22c55e; }
+    button.btn-success:hover { background: #16a34a; }
+    button.btn-danger { background: #ef4444; }
+    button.btn-danger:hover { background: #dc2626; }
+    button.btn-warn { background: #f59e0b; color: #000; }
+    .actions { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 4px; }
+    .step-box {
+      background: #334155; border-radius: 8px; padding: 12px; margin: 8px 0;
+      font-size: 13px; line-height: 1.6;
+    }
+    .step-box code { background: #0f172a; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; }
+    .important { background: #ef444420; border: 1px solid #ef4444; border-radius: 8px; padding: 12px; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>🧩 FocusProof – Widget (Cửa sổ nhỏ) Diagnostic</h1>
+  <p class="subtitle">
+    Trang này kiểm tra tại sao widget (cửa sổ nhỏ floating) không hiển thị trên trang web khi session đang chạy.
+  </p>
+
+  <div class="important">
+    <strong>⚠️ Lưu ý quan trọng:</strong> Trang diagnostic này là extension page, <strong>không thể</strong> inject widget vào chính nó.
+    Widget chỉ hiện trên <strong>trang web thông thường</strong> (Google, YouTube, v.v.).
+    Dưới đây là các bước kiểm tra tự động và hướng dẫn thủ công.
+  </div>
+
+  <!-- Section 1: Session Status -->
+  <h2>1️⃣ Session Status (từ Background)</h2>
+  <div class="card" id="session-card">
+    <div class="row"><span class="label">Session đang chạy?</span><span class="val" id="s-running">—</span></div>
+    <div class="row"><span class="label">Session ID</span><span class="val val--info" id="s-id">—</span></div>
+    <div class="row"><span class="label">Mode</span><span class="val val--info" id="s-mode">—</span></div>
+    <div class="row"><span class="label">Task Name</span><span class="val val--info" id="s-task">—</span></div>
+    <div class="row"><span class="label">Camera Enabled</span><span class="val" id="s-camera">—</span></div>
+    <div class="row"><span class="label">Samples collected</span><span class="val val--info" id="s-samples">—</span></div>
+    <div class="row"><span class="label">Alert Count</span><span class="val" id="s-alerts">—</span></div>
+    <div class="actions">
+      <button id="btn-check-session">🔄 Kiểm tra Session</button>
+    </div>
+  </div>
+
+  <!-- Section 2: Tab Info -->
+  <h2>2️⃣ Active Tab Info</h2>
+  <div class="card" id="tab-card">
+    <div class="row"><span class="label">Active Tab ID</span><span class="val val--info" id="t-id">—</span></div>
+    <div class="row"><span class="label">Active Tab URL</span><span class="val val--info" id="t-url">—</span></div>
+    <div class="row"><span class="label">Active Tab Title</span><span class="val val--info" id="t-title">—</span></div>
+    <div class="actions">
+      <button id="btn-check-tab">🔍 Kiểm tra Tab hiện tại</button>
+    </div>
+  </div>
+
+  <!-- Section 3: Content Script Check -->
+  <h2>3️⃣ Content Script trên Active Tab</h2>
+  <div class="card" id="cs-card">
+    <p style="font-size:12px; color:#64748b; margin-bottom:8px;">
+      Kiểm tra xem content script có được inject vào tab hiện tại không, bằng cách gửi ping message.
+    </p>
+    <div class="row"><span class="label">Content Script loaded?</span><span class="val" id="cs-loaded">—</span></div>
+    <div class="row"><span class="label">Widget element tồn tại?</span><span class="val" id="cs-widget">—</span></div>
+    <div class="actions">
+      <button id="btn-check-cs">📡 Ping Content Script</button>
+    </div>
+  </div>
+
+  <!-- Section 4: Manual Widget Test -->
+  <h2>4️⃣ Test Widget thủ công</h2>
+  <div class="card" id="manual-card">
+    <p style="font-size:12px; color:#64748b; margin-bottom:8px;">
+      Gửi lệnh trực tiếp đến content script của tab đang active:
+    </p>
+    <div class="actions">
+      <button id="btn-inject-widget" class="btn-success">✨ Inject Widget (START_SESSION)</button>
+      <button id="btn-update-widget">🔄 Update Widget (WIDGET_UPDATE)</button>
+      <button id="btn-test-alert" class="btn-warn">🔔 Test Alert Toast</button>
+      <button id="btn-destroy-widget" class="btn-danger">🗑️ Remove Widget (STOP_SESSION)</button>
+    </div>
+    <div class="row"><span class="label">Kết quả gần nhất</span><span class="val" id="m-result">—</span></div>
+  </div>
+
+  <!-- Section 5: Guide -->
+  <h2>5️⃣ Hướng dẫn test thủ công</h2>
+  <div class="card">
+    <div class="step-box">
+      <strong>Bước 1:</strong> Mở một tab web bình thường (ví dụ: <code>https://google.com</code>)<br>
+      <strong>Bước 2:</strong> Quay lại tab này, bấm <strong>"Kiểm tra Tab hiện tại"</strong> để xem tab ID<br>
+      <strong>Bước 3:</strong> Bấm <strong>"Ping Content Script"</strong> → nếu ❌ thì content script chưa được inject<br>
+      <strong>Bước 4:</strong> Bấm <strong>"Inject Widget"</strong> → chuyển qua tab web để xem widget<br>
+      <strong>Bước 5:</strong> Bấm <strong>"Test Alert Toast"</strong> → xem toast cảnh báo đỏ trên widget<br>
+      <br>
+      <strong>Nếu content script không load:</strong><br>
+      • Reload extension tại <code>chrome://extensions</code><br>
+      • Refresh lại trang web (Ctrl+R)<br>
+      • Kiểm tra <code>chrome://extensions</code> → xem errors<br>
+      • Content script <strong>không chạy</strong> trên <code>chrome://</code> pages và <code>chrome-extension://</code> pages
+    </div>
+  </div>
+
+  <!-- Section 6: Log -->
+  <h2>6️⃣ Full Log</h2>
+  <div class="log-box" id="log-box"></div>
+
+  <script src="widget-diagnostic.js"></script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>FocusProof – Alert & Goal Compliance Diagnostic</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: #0f172a; color: #f1f5f9;
+      padding: 24px; max-width: 900px; margin: 0 auto;
+    }
+    h1 { font-size: 22px; margin-bottom: 8px; color: #a5b4fc; }
+    h2 { font-size: 16px; margin: 16px 0 8px; color: #94a3b8; }
+    .subtitle { color: #94a3b8; margin-bottom: 20px; font-size: 13px; }
+    .card {
+      background: #1e293b; border-radius: 12px;
+      padding: 16px; margin-bottom: 12px;
+      border: 1px solid #334155;
+    }
+    .card--ok { border-color: #22c55e; }
+    .card--err { border-color: #ef4444; }
+    .card--warn { border-color: #f59e0b; }
+    .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #334155; flex-wrap: wrap; }
+    .row:last-child { border-bottom: none; }
+    .label { color: #94a3b8; font-size: 13px; }
+    .val { font-weight: 600; font-size: 13px; text-align: right; }
+    .val--ok { color: #22c55e; }
+    .val--err { color: #ef4444; }
+    .val--warn { color: #f59e0b; }
+    .val--info { color: #60a5fa; }
+    .log-box {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      padding: 12px; font-family: 'Consolas', monospace; font-size: 12px;
+      max-height: 400px; overflow-y: auto; white-space: pre-wrap;
+      line-height: 1.6;
+    }
+    .log-ok { color: #22c55e; }
+    .log-err { color: #ef4444; }
+    .log-warn { color: #f59e0b; }
+    .log-info { color: #60a5fa; }
+    button {
+      background: #6366f1; color: #fff; border: none; border-radius: 8px;
+      padding: 10px 20px; font-size: 14px; font-weight: 600;
+      cursor: pointer; margin: 4px;
+    }
+    button:hover { background: #4f46e5; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.btn-success { background: #22c55e; }
+    button.btn-success:hover { background: #16a34a; }
+    button.btn-danger { background: #ef4444; }
+    button.btn-danger:hover { background: #dc2626; }
+    button.btn-warn { background: #f59e0b; color: #000; }
+    button.btn-warn:hover { background: #d97706; }
+    .mode-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
+    .mode-btn {
+      background: #334155; border: 2px solid #475569; border-radius: 8px;
+      padding: 12px; cursor: pointer; color: #f1f5f9; text-align: center; font-size: 13px;
+    }
+    .mode-btn:hover { border-color: #6366f1; }
+    .mode-btn.active { border-color: #6366f1; background: #6366f140; }
+    .domain-list {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+    }
+    .domain-tag {
+      background: #334155; border-radius: 6px; padding: 4px 10px;
+      font-size: 12px; color: #94a3b8; font-family: 'Consolas', monospace;
+    }
+    .domain-tag--ok { background: #22c55e20; color: #22c55e; border: 1px solid #22c55e40; }
+    .domain-tag--err { background: #ef444420; color: #ef4444; border: 1px solid #ef444440; }
+    .test-url-input {
+      width: 100%; background: #0f172a; border: 1px solid #475569; border-radius: 8px;
+      padding: 10px 14px; color: #f1f5f9; font-size: 14px; font-family: 'Consolas', monospace;
+      margin: 8px 0;
+    }
+    .test-url-input:focus { border-color: #6366f1; outline: none; }
+    .result-box {
+      padding: 12px; border-radius: 8px; margin: 8px 0;
+      font-size: 14px; font-weight: 600; text-align: center;
+    }
+    .result-box--ok { background: #22c55e20; color: #22c55e; border: 1px solid #22c55e; }
+    .result-box--err { background: #ef444420; color: #ef4444; border: 1px solid #ef4444; }
+    .actions { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 6px 8px; color: #94a3b8; border-bottom: 1px solid #334155; }
+    td { padding: 6px 8px; border-bottom: 1px solid #1e293b; }
+    .live-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .live-indicator--on { background: #22c55e; animation: pulse 1.5s infinite; }
+    .live-indicator--off { background: #64748b; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+  <h1>🔔 FocusProof – Alert & Goal Compliance Diagnostic</h1>
+  <p class="subtitle">
+    Trang này giúp kiểm tra hệ thống cảnh báo tab không liên quan và ứng dụng ngoài Chrome.
+    Chọn chế độ session, nhập URL để test, và theo dõi realtime.
+  </p>
+
+  <!-- Section 1: Goal Rules -->
+  <h2>1️⃣ Chọn chế độ Session (SessionMode)</h2>
+  <div class="card" id="mode-card">
+    <p style="font-size:12px; color:#64748b; margin-bottom:8px;">Chọn loại mục tiêu để xem danh sách domain được phép:</p>
+    <div class="mode-grid">
+      <div class="mode-btn active" data-mode="study" id="mode-study">📚 Study</div>
+      <div class="mode-btn" data-mode="work" id="mode-work">💼 Work</div>
+      <div class="mode-btn" data-mode="programming" id="mode-programming">💻 Programming</div>
+      <div class="mode-btn" data-mode="video-lecture" id="mode-video-lecture">🎬 Video Lecture</div>
+    </div>
+    <div class="row">
+      <span class="label">Allowed Domains (mặc định)</span>
+    </div>
+    <div class="domain-list" id="allowed-domains"></div>
+    <div class="row" style="margin-top:12px">
+      <span class="label">External Apps (ngoài Chrome)</span>
+      <span class="val" id="external-rule">—</span>
+    </div>
+  </div>
+
+  <!-- Section 2: Test URL -->
+  <h2>2️⃣ Test URL/Domain Compliance</h2>
+  <div class="card" id="test-card">
+    <p style="font-size:12px; color:#64748b; margin-bottom:8px;">Nhập URL hoặc domain để kiểm tra có phù hợp mục tiêu không:</p>
+    <input type="text" class="test-url-input" id="test-url" placeholder="https://youtube.com/watch?v=abc hoặc facebook.com" />
+    <div class="actions">
+      <button id="btn-test-url">🔍 Kiểm tra URL</button>
+      <button id="btn-test-outside" class="btn-warn">🚪 Test "Rời Chrome"</button>
+    </div>
+    <div id="test-result" style="display:none"></div>
+  </div>
+
+  <!-- Section 3: Quick Test URLs -->
+  <h2>3️⃣ Test nhanh các tình huống</h2>
+  <div class="card" id="quick-card">
+    <p style="font-size:12px; color:#64748b; margin-bottom:8px;">Click từng URL dưới đây để kiểm tra nhanh (theo mode đã chọn):</p>
+    <table>
+      <thead>
+        <tr><th>URL</th><th>Mô tả</th><th>Kết quả</th></tr>
+      </thead>
+      <tbody id="quick-test-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Section 4: Live Session Monitor -->
+  <h2>4️⃣ Live Session Monitor</h2>
+  <div class="card" id="live-card">
+    <p style="font-size:12px; color:#64748b; margin-bottom:8px;">
+      Theo dõi realtime session đang chạy. Bấm "Bắt đầu theo dõi" để poll trạng thái từ background.
+    </p>
+    <div class="actions">
+      <button id="btn-live-start" class="btn-success">▶️ Bắt đầu theo dõi</button>
+      <button id="btn-live-stop" class="btn-danger" disabled>⏹ Dừng</button>
+    </div>
+    <div class="row"><span class="label"><span class="live-indicator live-indicator--off" id="live-dot"></span>Session Status</span><span class="val" id="live-status">—</span></div>
+    <div class="row"><span class="label">Current URL/Tab</span><span class="val val--info" id="live-url">—</span></div>
+    <div class="row"><span class="label">Current Domain</span><span class="val val--info" id="live-domain">—</span></div>
+    <div class="row"><span class="label">Goal Compliant?</span><span class="val" id="live-compliant">—</span></div>
+    <div class="row"><span class="label">Outside Chrome?</span><span class="val" id="live-outside">—</span></div>
+    <div class="row"><span class="label">Alert Count</span><span class="val" id="live-alerts">—</span></div>
+    <div class="row"><span class="label">Camera Enabled</span><span class="val" id="live-camera">—</span></div>
+    <div class="row"><span class="label">Face Detected</span><span class="val" id="live-face">—</span></div>
+    <div class="row"><span class="label">Score</span><span class="val" id="live-score">—</span></div>
+  </div>
+
+  <!-- Section 5: Alert History -->
+  <h2>5️⃣ Alert History (từ session đang chạy)</h2>
+  <div class="card" id="history-card">
+    <table>
+      <thead>
+        <tr><th>Thời gian</th><th>Loại</th><th>Thông báo</th></tr>
+      </thead>
+      <tbody id="alert-history-body">
+        <tr><td colspan="3" style="color:#64748b; text-align:center">Chưa có dữ liệu</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Section 6: Full Log -->
+  <h2>6️⃣ Full Log</h2>
+  <div class="log-box" id="log-box"></div>
+
+  <script src="alert-diagnostic.js"></script>
+</body>
+</html>

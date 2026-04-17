@@ -1,0 +1,83 @@
+/* FocusProof – StartScreen Styles */
+
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mode-card:hover {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.mode-card--active {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.mode-icon {
+  font-size: 20px;
+}
+
+.mode-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.duration-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.duration-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text);
+}
+
+.duration-chip:hover {
+  border-color: var(--primary);
+}
+
+.duration-chip--active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.advanced-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}

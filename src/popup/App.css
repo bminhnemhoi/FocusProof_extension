@@ -1,0 +1,12 @@
+/*
+ * FocusProof  Popup Styles (Entry Point)
+ * All styles split into dedicated files under ./styles/
+ */
+
+@import './styles/global.css';
+@import './styles/StartScreen.css';
+@import './styles/CameraModal.css';
+@import './styles/RunningScreen.css';
+@import './styles/ResultScreen.css';
+@import './styles/HistoryScreen.css';
+@import './styles/DiagnosticDashboard.css';

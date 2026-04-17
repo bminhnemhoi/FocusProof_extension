@@ -1,0 +1,263 @@
+/* FocusProof – ResultScreen Styles */
+
+.result-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.result-score-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+}
+
+.result-score-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 6px solid var(--grade-color, var(--primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.result-score-value {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.result-score-unit {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.result-grade {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.result-info {
+  text-align: center;
+}
+
+.result-task {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.result-meta {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.result-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.result-stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.result-stat-row + .result-stat-row {
+  border-top: 1px solid var(--border);
+}
+
+.result-stat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.result-stat-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.result-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-badges-title,
+.result-domains-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.result-domains {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.domain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.domain-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.domain-name {
+  color: var(--text);
+  font-family: monospace;
+}
+
+.domain-count {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.result-hash {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.hash-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.hash-value {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  background: none;
+  padding: 0;
+}
+
+.result-actions-phase3 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0.6;
+}
+
+/* ──── Voice Note Section ──── */
+
+.result-voice-section,
+.result-ai-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.voice-transcript {
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.voice-transcript-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.voice-transcript-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ──── AI Result Card ──── */
+
+.ai-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ai-summary-vi {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+.ai-summary-en {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.ai-pattern {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.ai-recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-rec-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ai-rec-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.ai-rec-list li {
+  margin-bottom: 2px;
+}

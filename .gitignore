@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MediaPipe binary files (copy via npm postinstall)
+public/wasm/*.wasm
+public/wasm/*.js
+public/models/*.tflite
+
+# Testing
+coverage/
+
+# Husky
+.husky/_/
