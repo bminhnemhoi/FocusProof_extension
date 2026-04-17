@@ -258,6 +258,44 @@
   line-height: 1.6;
 }
 
+/* ── Share Buttons ── */
+.result-share-section {
+  margin-top: 12px;
+}
+
+.share-buttons-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.btn-share {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-share:hover {
+  opacity: 0.85;
+}
+
+.btn-share--facebook {
+  background: #1877f2;
+  color: #fff;
+  border-color: #1877f2;
+}
+
+.btn-share--tiktok {
+  background: #010101;
+  color: #fff;
+  border-color: #333;
+}
+
 .ai-rec-list li {
   margin-bottom: 2px;
 }

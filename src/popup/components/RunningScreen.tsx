@@ -22,7 +22,8 @@ interface SessionStatusResponse {
 export default function RunningScreen({ onStop }: RunningScreenProps) {
   const [session, setSession] = useState<SessionData | null>(null);
   const [alertCount, setAlertCount] = useState(0);
-  const [_elapsed, setElapsed] = useState(0);
+  const elapsedRef = useRef(0);
+  const [, setTick] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -45,9 +46,10 @@ export default function RunningScreen({ onStop }: RunningScreenProps) {
     poll();
     pollRef.current = setInterval(poll, 2000);
 
-    // Local elapsed timer (updates every second)
+    // Local elapsed timer (triggers re-render every second for countdown)
     timerRef.current = setInterval(() => {
-      setElapsed((prev) => prev + 1);
+      elapsedRef.current += 1;
+      setTick((t) => t + 1);
     }, 1000);
 
     return () => {
@@ -132,7 +134,7 @@ export default function RunningScreen({ onStop }: RunningScreenProps) {
   return (
     <div className="running-screen">
       {/* Timer */}
-      <div className="timer-section">
+      <div className="timer-section" aria-live="polite" aria-atomic="true">
         <div className="timer-ring" style={{ '--progress': `${progressPercent}%` } as React.CSSProperties}>
           <span className="timer-value">
             {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}

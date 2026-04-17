@@ -10,7 +10,13 @@ import { useState, useRef, useCallback } from 'react';
 import type { SessionData, AIAnalysisResult } from '@/utils/types';
 import { getGrade } from '@/utils/focus';
 import { startVoiceNote, isSpeechRecognitionSupported } from '@/utils/voice-note';
+import { BADGE_DEFINITIONS } from '@/utils/gamification';
 import type { VoiceNoteResult } from '@/utils/voice-note';
+
+/** Map badge ID → tên tiếng Việt */
+const BADGE_NAME_MAP = Object.fromEntries(
+  BADGE_DEFINITIONS.map((b) => [b.id, { name: b.name, desc: b.description }]),
+);
 
 interface ResultScreenProps {
   session: SessionData;
@@ -166,8 +172,8 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
           <p className="result-badges-title">🏆 Huy hiệu đạt được</p>
           <div className="badges-grid">
             {session.badges.map((badgeId) => (
-              <span key={badgeId} className="badge-chip">
-                {badgeId.replace(/_/g, ' ')}
+              <span key={badgeId} className="badge-chip" title={BADGE_NAME_MAP[badgeId]?.desc ?? badgeId}>
+                {BADGE_NAME_MAP[badgeId]?.name ?? badgeId.replace(/_/g, ' ')}
               </span>
             ))}
           </div>
@@ -272,6 +278,35 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
         {pdfLoading ? '🔄 Đang tạo PDF...' : '📄 Xuất chứng chỉ PDF'}
       </button>
       {pdfError && <p className="form-hint form-hint--warning" role="alert">{pdfError}</p>}
+      </div>
+
+      {/* ── Share Buttons ── */}
+      <div className="result-share-section">
+        <p className="result-section-title">📤 Chia sẻ kết quả</p>
+        <div className="share-buttons-row">
+          <button
+            className="btn btn-share btn-share--facebook"
+            onClick={() => {
+              const text = `🎯 FocusProof: Tôi đạt ${Math.round(score)}/100 điểm tập trung trong phiên "${session.config.taskName}"! #FocusProof`;
+              window.open(`https://www.facebook.com/sharer/sharer.php?quote=${encodeURIComponent(text)}`, '_blank', 'width=600,height=400');
+            }}
+            type="button"
+          >
+            📘 Facebook
+          </button>
+          <button
+            className="btn btn-share btn-share--tiktok"
+            onClick={() => {
+              const text = `🎯 FocusProof: ${Math.round(score)}/100 điểm tập trung! "${session.config.taskName}" #FocusProof #TapTrung`;
+              navigator.clipboard.writeText(text).then(() => {
+                alert('Đã copy nội dung! Paste vào TikTok để chia sẻ.');
+              });
+            }}
+            type="button"
+          >
+            🎵 TikTok
+          </button>
+        </div>
       </div>
 
       {/* Actions */}

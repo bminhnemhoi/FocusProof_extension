@@ -81,13 +81,15 @@ export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
       {/* Mode Selection */}
       <div className="form-group">
         <label className="form-label">Loại mục tiêu</label>
-        <div className="mode-grid">
+        <div className="mode-grid" role="radiogroup" aria-label="Chọn loại mục tiêu">
           {MODE_PRESETS.map((preset) => (
             <button
               key={preset.mode}
               className={`mode-card ${mode === preset.mode ? 'mode-card--active' : ''}`}
               onClick={() => setMode(preset.mode)}
               type="button"
+              role="radio"
+              aria-checked={mode === preset.mode}
             >
               <span className="mode-icon">{preset.icon}</span>
               <span className="mode-label">{preset.label}</span>
@@ -102,13 +104,15 @@ export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
       {/* Duration */}
       <div className="form-group">
         <label className="form-label">Thời lượng</label>
-        <div className="duration-grid">
+        <div className="duration-grid" role="radiogroup" aria-label="Chọn thời lượng">
           {DURATION_OPTIONS.map((d) => (
             <button
               key={d}
               className={`duration-chip ${durationMinutes === d ? 'duration-chip--active' : ''}`}
               onClick={() => setDurationMinutes(d)}
               type="button"
+              role="radio"
+              aria-checked={durationMinutes === d}
             >
               {d} phút
             </button>

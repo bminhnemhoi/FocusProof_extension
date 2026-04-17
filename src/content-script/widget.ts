@@ -220,6 +220,8 @@ export function createWidget(): void {
 
   try {
     hostElement = document.createElement('focusproof-widget');
+    hostElement.setAttribute('role', 'status');
+    hostElement.setAttribute('aria-label', 'FocusProof - Trạng thái phiên tập trung');
     shadowRoot = hostElement.attachShadow({ mode: 'closed' });
 
     // Inject styles
@@ -233,8 +235,9 @@ export function createWidget(): void {
     container.id = 'fp-container';
     container.innerHTML = buildExpandedHTML(0, '25:00', false, false, true);
 
-    // Drag handlers
+    // Drag handlers (mouse + touch)
     container.addEventListener('mousedown', onDragStart);
+    container.addEventListener('touchstart', onTouchDragStart, { passive: false });
 
     shadowRoot.appendChild(container);
     document.body.appendChild(hostElement);
@@ -492,4 +495,49 @@ function onDragEnd() {
 
   document.removeEventListener('mousemove', onDragMove);
   document.removeEventListener('mouseup', onDragEnd);
+}
+
+// ── Touch drag support ──
+
+function onTouchDragStart(e: TouchEvent) {
+  if (isMinimized) return;
+  if ((e.target as HTMLElement).id === 'fp-minimize') return;
+  if (!e.touches[0]) return;
+
+  e.preventDefault();
+  isDragging = true;
+  const rect = hostElement!.getBoundingClientRect();
+  dragOffset.x = e.touches[0].clientX - rect.left;
+  dragOffset.y = e.touches[0].clientY - rect.top;
+
+  const container = shadowRoot?.getElementById('fp-container');
+  container?.classList.add('fp-dragging');
+
+  document.addEventListener('touchmove', onTouchDragMove, { passive: false });
+  document.addEventListener('touchend', onTouchDragEnd);
+}
+
+function onTouchDragMove(e: TouchEvent) {
+  if (!isDragging || !hostElement || !e.touches[0]) return;
+  e.preventDefault();
+
+  const x = e.touches[0].clientX - dragOffset.x;
+  const y = e.touches[0].clientY - dragOffset.y;
+
+  const maxX = window.innerWidth - (hostElement.offsetWidth || 200);
+  const maxY = window.innerHeight - (hostElement.offsetHeight || 150);
+
+  hostElement.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
+  hostElement.style.top = `${Math.max(0, Math.min(y, maxY))}px`;
+  hostElement.style.right = 'auto';
+  hostElement.style.bottom = 'auto';
+}
+
+function onTouchDragEnd() {
+  isDragging = false;
+  const container = shadowRoot?.getElementById('fp-container');
+  container?.classList.remove('fp-dragging');
+
+  document.removeEventListener('touchmove', onTouchDragMove);
+  document.removeEventListener('touchend', onTouchDragEnd);
 }

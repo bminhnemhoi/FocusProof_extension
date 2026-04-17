@@ -183,6 +183,53 @@
   text-transform: capitalize;
 }
 
+/* Bar Chart */
+.barchart-section {
+  margin-top: 8px;
+}
+
+.barchart-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.barchart-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  align-items: end;
+}
+
+.barchart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.barchart-bar-wrapper {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.barchart-bar {
+  width: 80%;
+  border-radius: 3px 3px 0 0;
+  transition: height 0.3s ease;
+  min-width: 8px;
+}
+
+.barchart-day {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
 /* Toolbar */
 .history-toolbar {
   display: flex;

@@ -10,6 +10,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { SessionData, SessionMode } from '@/utils/types';
 import { getGrade } from '@/utils/focus';
 import { storage } from '@/utils/storage';
+import { BADGE_DEFINITIONS } from '@/utils/gamification';
+
+/** Map badge ID → Vietnamese name */
+const BADGE_NAME_MAP = Object.fromEntries(
+  BADGE_DEFINITIONS.map((b) => [b.id, b.name]),
+);
 
 interface HistoryScreenProps {
   onBack: () => void;
@@ -164,12 +170,34 @@ export default function HistoryScreen({ onBack, onViewResult }: HistoryScreenPro
         </div>
       </div>
 
+      {/* 7-day Bar Chart */}
+      <div className="barchart-section">
+        <span className="barchart-label">Điểm trung bình 7 ngày</span>
+        <div className="barchart-grid">
+          {heatmap.map((day) => (
+            <div key={day.date} className="barchart-col">
+              <div className="barchart-bar-wrapper">
+                <div
+                  className="barchart-bar"
+                  style={{
+                    height: `${day.count > 0 ? Math.max(day.avgScore, 5) : 0}%`,
+                    background: heatmapColor(day.avgScore, day.count),
+                  }}
+                  title={`${day.date}: TB ${day.avgScore} điểm`}
+                />
+              </div>
+              <span className="barchart-day">{day.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Badges Row */}
       {earnedBadges.length > 0 && (
         <div className="history-badges">
           {earnedBadges.map((id) => (
             <span key={id} className="badge-chip badge-chip--earned">
-              {id.replace(/_/g, ' ')}
+              {BADGE_NAME_MAP[id] ?? id.replace(/_/g, ' ')}
             </span>
           ))}
         </div>
@@ -181,6 +209,7 @@ export default function HistoryScreen({ onBack, onViewResult }: HistoryScreenPro
           className="mode-filter"
           value={modeFilter}
           onChange={(e) => setModeFilter(e.target.value as SessionMode | 'all')}
+          aria-label="Lọc theo loại mục tiêu"
         >
           <option value="all">Tất cả</option>
           {(Object.keys(MODE_LABELS) as SessionMode[]).map((m) => (

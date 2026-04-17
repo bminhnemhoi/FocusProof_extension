@@ -97,7 +97,7 @@ export default function CameraModal({ onConfirm, onSkip }: CameraModalProps) {
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && handleSkip()}>
-      <div className="modal-content">
+      <div className="modal-content" role="dialog" aria-modal="true" aria-label="Cài đặt Camera">
         <h2 className="modal-title">📷 Chuẩn bị Camera</h2>
 
         {step === 'info' && (
