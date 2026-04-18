@@ -151,6 +151,32 @@ export function clearLastResult(): void {
 }
 
 // ============================================================
+// Finalize Listeners (Phase 10 — web sync)
+// ============================================================
+
+type FinalizedListener = (result: SessionData) => void;
+const finalizedListeners: FinalizedListener[] = [];
+
+/** Đăng ký callback chạy khi session vừa kết thúc (sau khi tinh điểm + hash). */
+export function onFinalized(cb: FinalizedListener): () => void {
+  finalizedListeners.push(cb);
+  return () => {
+    const idx = finalizedListeners.indexOf(cb);
+    if (idx >= 0) finalizedListeners.splice(idx, 1);
+  };
+}
+
+function emitFinalized(result: SessionData): void {
+  for (const cb of finalizedListeners) {
+    try {
+      cb(result);
+    } catch (err) {
+      console.warn('[BG] onFinalized listener error', err);
+    }
+  }
+}
+
+// ============================================================
 // Polling – Content Script
 // ============================================================
 
@@ -425,6 +451,9 @@ export async function stopSession() {
 
   // Save as last finished session (popup can read on reopen)
   lastFinishedSession = result as SessionData;
+
+  // Notify external listeners (web sync, analytics…)
+  emitFinalized(result as SessionData);
 
   // Cleanup internal state
   currentSession = null;

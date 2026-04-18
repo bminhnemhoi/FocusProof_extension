@@ -143,7 +143,9 @@ export type MessageType =
   | 'GET_FACE'
   | 'WIDGET_UPDATE'
   | 'TAB_STATE'
-  | 'PING';
+  | 'PING'
+  | 'BROADCAST_TO_WEB'
+  | 'SET_USER';
 
 export interface ChromeMessage<T = unknown> {
   type: MessageType;

@@ -1,124 +1,96 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { UserPlan, UserState } from '../types';
-
-/**
- * UserContext — quản lý state user (plan, credits, email).
- *
- * Phase 2 (HIỆN TẠI): persist trong localStorage để demo flow đầy đủ:
- *   signup → trial → consume credit → exhausted → upgrade Pro → unlimited.
- *
- * Phase tiếp theo (Supabase): thay `loadFromStorage` bằng fetch /user/profile
- * với JWT từ chrome.storage.local hoặc cookie HttpOnly.
- */
-
-const STORAGE_KEY = 'focusproof.user.v1';
+import { auth, credits as creditsApi, checkout } from '../services/mockApi';
+import { seedDemoTransactions } from '../services/transactionStore';
+import { pushUserState } from '../services/extensionBridge';
 
 interface UserContextValue {
   user: UserState | null;
-  /** true khi đã đăng nhập */
   isAuthenticated: boolean;
-  /** Mock signup: tạo user free + 100 credit. */
-  signup: (email: string) => void;
-  /** Mock login: nếu email tồn tại trong storage → load lại, không thì signup mới. */
-  login: (email: string) => void;
-  logout: () => void;
-  /** Trừ credit (atomic mock). Trả về true nếu thành công. */
-  consumeCredits: (amount: number) => boolean;
-  /** Thêm credit (referral, streak, admin...). */
-  addCredits: (amount: number) => void;
-  /** Mock upgrade — gọi sau khi "thanh toán Momo thành công". */
-  upgradeTo: (plan: UserPlan) => void;
+  loading: boolean;
+  signup: (email: string) => Promise<void>;
+  login: (email: string) => Promise<void>;
+  logout: () => Promise<void>;
+  /** Trừ credit. Trả về true nếu thành công. */
+  consumeCredits: (amount: number, reason?: string) => Promise<boolean>;
+  /** Cộng credit. */
+  addCredits: (amount: number, reason?: string) => Promise<void>;
+  /** Mock thanh toán Momo → upgrade plan. */
+  upgradeTo: (plan: UserPlan) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
 
-function loadFromStorage(): UserState | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Omit<UserState, 'credits'> & { credits: number | 'inf' };
-    // Restore Infinity (JSON không serialize được)
-    return {
-      ...parsed,
-      credits: parsed.credits === 'inf' ? Number.POSITIVE_INFINITY : parsed.credits,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function saveToStorage(user: UserState | null) {
-  if (!user) {
-    localStorage.removeItem(STORAGE_KEY);
-    return;
-  }
-  const safe = {
-    ...user,
-    credits: Number.isFinite(user.credits) ? user.credits : 'inf',
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
-}
-
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserState | null>(() => loadFromStorage());
+  const [user, setUser] = useState<UserState | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Boot: load current session từ mockApi (sau này = supabase.auth.getSession()).
   useEffect(() => {
-    saveToStorage(user);
+    let alive = true;
+    auth.getCurrent().then((u) => {
+      if (!alive) return;
+      setUser(u);
+      if (u?.email) seedDemoTransactions(u.email);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Phase 10: đẩy mọi thay đổi user sang extension (nếu cài).
+  useEffect(() => {
+    pushUserState(user).catch(() => {
+      /* extension chưa cài → bỏ qua */
+    });
   }, [user]);
 
-  const signup = useCallback((email: string) => {
-    setUser({ plan: 'free', credits: 100, email });
+  const signup = useCallback(async (email: string) => {
+    const session = await auth.signup(email);
+    setUser(session.user);
   }, []);
 
-  const login = useCallback((email: string) => {
-    // Mock: nếu chưa có thì tạo mới
-    setUser((prev) => prev ?? { plan: 'free', credits: 100, email });
+  const login = useCallback(async (email: string) => {
+    const session = await auth.login(email);
+    setUser(session.user);
   }, []);
 
-  const logout = useCallback(() => setUser(null), []);
-
-  const consumeCredits = useCallback((amount: number): boolean => {
-    let ok = false;
-    setUser((prev) => {
-      if (!prev) return prev;
-      // Pro/Team unlimited
-      if (!Number.isFinite(prev.credits)) {
-        ok = true;
-        return prev;
-      }
-      if (prev.credits < amount) {
-        ok = false;
-        return prev;
-      }
-      ok = true;
-      return { ...prev, credits: prev.credits - amount };
-    });
-    return ok;
+  const logout = useCallback(async () => {
+    await auth.logout();
+    setUser(null);
   }, []);
 
-  const addCredits = useCallback((amount: number) => {
-    setUser((prev) => {
-      if (!prev) return prev;
-      if (!Number.isFinite(prev.credits)) return prev;
-      return { ...prev, credits: prev.credits + amount };
-    });
+  const consumeCredits = useCallback(async (amount: number, reason?: string): Promise<boolean> => {
+    try {
+      const next = await creditsApi.consume(amount, reason ?? 'Sử dụng tính năng AI');
+      setUser(next);
+      return true;
+    } catch (err) {
+      if ((err as Error).message === 'INSUFFICIENT_CREDITS') return false;
+      throw err;
+    }
   }, []);
 
-  const upgradeTo = useCallback((plan: UserPlan) => {
-    setUser((prev) => {
-      const base = prev ?? { plan: 'free' as UserPlan, credits: 100, email: undefined };
-      return {
-        ...base,
-        plan,
-        credits: plan === 'free' ? base.credits : Number.POSITIVE_INFINITY,
-      };
-    });
+  const addCredits = useCallback(async (amount: number, reason?: string) => {
+    const next = await creditsApi.grant(amount, reason ?? 'Thưởng Credit');
+    setUser(next);
+  }, []);
+
+  const upgradeTo = useCallback(async (plan: UserPlan) => {
+    if (plan === 'free') {
+      setUser((prev) => (prev ? { ...prev, plan: 'free' } : prev));
+      return;
+    }
+    const result = await checkout.purchase(plan);
+    setUser(result.user);
   }, []);
 
   const value = useMemo<UserContextValue>(
     () => ({
       user,
       isAuthenticated: user !== null,
+      loading,
       signup,
       login,
       logout,
@@ -126,7 +98,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       addCredits,
       upgradeTo,
     }),
-    [user, signup, login, logout, consumeCredits, addCredits, upgradeTo],
+    [user, loading, signup, login, logout, consumeCredits, addCredits, upgradeTo],
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

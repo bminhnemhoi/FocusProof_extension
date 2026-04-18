@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
 import { useUser } from '../context/UserContext';
+import { useToast } from '../context/ToastContext';
 
 interface AuthModalProps {
   open: boolean;
@@ -15,11 +16,12 @@ interface AuthModalProps {
  */
 export function AuthModal({ open, onClose, initialMode = 'signup' }: AuthModalProps) {
   const { signup, login } = useUser();
+  const toast = useToast();
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const trimmed = email.trim().toLowerCase();
@@ -27,10 +29,14 @@ export function AuthModal({ open, onClose, initialMode = 'signup' }: AuthModalPr
       setError('Email không hợp lệ');
       return;
     }
-    if (mode === 'signup') signup(trimmed);
-    else login(trimmed);
-    setEmail('');
-    onClose();
+    try {
+      if (mode === 'signup') await signup(trimmed);
+      else await login(trimmed);
+      setEmail('');
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
   return (
@@ -101,7 +107,7 @@ export function AuthModal({ open, onClose, initialMode = 'signup' }: AuthModalPr
       {/* Social (mock) */}
       <button
         type="button"
-        onClick={() => alert('Google OAuth sẽ được tích hợp ở Phase Supabase Auth.')}
+        onClick={() => toast.info('Sắp ra mắt', 'Google OAuth sẽ được tích hợp ở Phase Supabase Auth.')}
         className="btn-secondary w-full justify-center py-3"
       >
         <span aria-hidden>🔐</span>

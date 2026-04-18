@@ -18,6 +18,7 @@ import {
   showAlert,
 } from './widget';
 import type { WidgetUpdatePayload } from './widget';
+import { initWebBridge, broadcastToWeb } from './web-bridge';
 
 // ============================================================
 // Duplicate Injection Guard
@@ -284,6 +285,15 @@ chrome.runtime.onMessage.addListener(
         });
         return false;
 
+      case 'BROADCAST_TO_WEB':
+        // Background đẩy event sang web (vd: SESSION_FINALIZED).
+        broadcastToWeb(
+          (message.payload as { type: string; payload: unknown }).type,
+          (message.payload as { type: string; payload: unknown }).payload,
+        );
+        sendResponse({ success: true });
+        return false;
+
       default:
         return false;
     }
@@ -291,5 +301,7 @@ chrome.runtime.onMessage.addListener(
 );
 
 console.warn('[FocusProof] Content script loaded');
+
+initWebBridge();
 
 } // end _initContentScript

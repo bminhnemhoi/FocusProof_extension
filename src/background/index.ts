@@ -123,6 +123,74 @@ chrome.runtime.onMessage.addListener(
 );
 
 // ============================================================
+// Web App External Messaging (Phase 10)
+// ============================================================
+// `externally_connectable` cho phép site focusproof.com gọi trực tiếp.
+// Dùng cho các thao tác đọc trạng thái + ghi nhận đăng nhập web.
+
+chrome.runtime.onMessageExternal?.addListener((message: ChromeMessage, _sender, sendResponse) => {
+  switch (message.type) {
+    case 'PING':
+      sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
+      return false;
+
+    case 'SESSION_STATUS':
+      sendResponse({
+        status: sessionManager.getSession()?.status ?? 'idle',
+        session: sessionManager.getSession(),
+        lastResult: sessionManager.getLastResult(),
+      });
+      return false;
+
+    case 'SET_USER':
+      chrome.storage.local
+        .set({ focusproof_web_user: message.payload })
+        .then(() => sendResponse({ ok: true }))
+        .catch((err) => sendResponse({ error: String(err) }));
+      return true;
+
+    default:
+      sendResponse({ error: 'UNKNOWN_REQUEST_TYPE' });
+      return false;
+  }
+});
+
+/**
+ * Broadcast một event tới tất cả tab focusproof.com đang mở.
+ * Dùng khi session vừa hoàn thành để Dashboard tự cập nhật.
+ */
+async function broadcastToWebTabs(type: string, payload: unknown): Promise<void> {
+  try {
+    const tabs = await chrome.tabs.query({
+      url: [
+        'https://focusproof.com/*',
+        'https://www.focusproof.com/*',
+        'https://*.vercel.app/*',
+        'http://localhost:5173/*',
+        'http://127.0.0.1:5173/*',
+      ],
+    });
+    await Promise.allSettled(
+      tabs.map((t) =>
+        t.id
+          ? chrome.tabs.sendMessage(t.id, {
+              type: 'BROADCAST_TO_WEB',
+              payload: { type, payload },
+            })
+          : Promise.resolve(),
+      ),
+    );
+  } catch {
+    /* no permission / no tabs → skip */
+  }
+}
+
+// Hook session-manager để tự động broadcast khi finalize.
+sessionManager.onFinalized?.((result) => {
+  broadcastToWebTabs('SESSION_FINALIZED', result);
+});
+
+// ============================================================
 // Startup – Restore session if SW was restarted
 // ============================================================
 

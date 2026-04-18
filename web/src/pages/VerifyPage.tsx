@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useMeta } from '../hooks/useMeta';
+import { license } from '../services/mockApi';
 
 type VerifyResult =
   | { status: 'idle' }
@@ -14,37 +16,47 @@ type VerifyResult =
  * Phase Supabase: POST /verify với hash → backend tra session_summaries → trả về metadata.
  */
 export default function VerifyPage() {
+  useMeta({
+    title: 'Verify Certificate — Xác minh QR',
+    description:
+      'Quét QR trên PDF Certificate của FocusProof để xác minh phiên tập trung là thật. Miễn phí, không cần đăng nhập.',
+    canonicalPath: '/verify',
+  });
+
   const [searchParams] = useSearchParams();
   const initialHash = searchParams.get('hash') ?? '';
   const [hash, setHash] = useState(initialHash);
   const [result, setResult] = useState<VerifyResult>({ status: 'idle' });
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = hash.trim();
     if (!trimmed) return;
 
     setResult({ status: 'loading' });
-
-    // Mock latency + validation
-    setTimeout(() => {
-      if (trimmed.startsWith('FP-') && trimmed.length >= 16) {
-        setResult({
-          status: 'valid',
-          data: {
-            sessionId: trimmed,
-            date: '2026-04-15 14:30',
-            focusScore: 87,
-            user: 'minh.anh@example.com',
-          },
-        });
-      } else {
-        setResult({
-          status: 'invalid',
-          reason: 'Hash không khớp với bất kỳ chứng chỉ nào trong hệ thống.',
-        });
-      }
-    }, 600);
+    const rec = await license.verify(trimmed);
+    if (rec) {
+      setResult({
+        status: 'valid',
+        data: {
+          sessionId: rec.sessionId,
+          date: new Date(rec.createdAt).toLocaleString('vi-VN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          focusScore: rec.focusScore,
+          user: rec.user,
+        },
+      });
+    } else {
+      setResult({
+        status: 'invalid',
+        reason: 'Hash không khớp với bất kỳ chứng chỉ nào trong hệ thống.',
+      });
+    }
   };
 
   return (

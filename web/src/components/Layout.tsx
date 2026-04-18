@@ -3,10 +3,9 @@ import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import { AuthModal } from './AuthModal';
+import { ScrollToTopButton } from './ScrollToTopButton';
+import { CookieBanner } from './CookieBanner';
 
-/**
- * Layout chính — bọc Header + <Outlet/> cho route + Footer + AuthModal global.
- */
 export function Layout() {
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -18,6 +17,8 @@ export function Layout() {
       </main>
       <Footer />
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <ScrollToTopButton />
+      <CookieBanner />
     </div>
   );
 }
