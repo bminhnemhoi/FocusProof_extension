@@ -15,6 +15,11 @@ import type { ChromeMessage, SessionConfig } from '@/utils/types';
 import * as sessionManager from './session-manager';
 import * as tabTracker from './tab-tracker';
 import * as alertManager from './alert-manager';
+import { track, logError, installGlobalErrorHandlers } from '@/utils/analytics';
+import { registerCertificate } from '@/utils/certificate-signing';
+
+// Bắt mọi lỗi runtime chưa xử lý trong service worker (tiêu chí: error logging)
+installGlobalErrorHandlers('background');
 
 // ============================================================
 // Tab & Window Tracking (Realtime Chrome Events)
@@ -37,7 +42,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     try {
       await chrome.tabs.sendMessage(activeInfo.tabId, {
         type: 'START_SESSION',
-        payload: null,
+        payload: sessionManager.getStartSessionPayload(),
       });
     } catch {
       // Content script may already be tracking on this tab
@@ -53,7 +58,10 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.active && tab.url && /^https?:/.test(tab.url)) {
     sessionManager.ensureContentScript(_tabId).then((ok) => {
       if (ok) {
-        chrome.tabs.sendMessage(_tabId, { type: 'START_SESSION', payload: null }).catch(() => {});
+        chrome.tabs.sendMessage(_tabId, {
+          type: 'START_SESSION',
+          payload: sessionManager.getStartSessionPayload(),
+        }).catch(() => {});
       }
     }).catch(() => {});
   }
@@ -85,11 +93,26 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 chrome.runtime.onMessage.addListener(
   (message: ChromeMessage, _sender, sendResponse) => {
     switch (message.type) {
-      case 'START_SESSION':
-        sessionManager.startSession(message.payload as SessionConfig)
-          .then((result) => sendResponse(result))
-          .catch((err) => sendResponse({ error: String(err) }));
+      case 'START_SESSION': {
+        const cfg = message.payload as SessionConfig;
+        sessionManager.startSession(cfg)
+          .then((result) => {
+            if ((result as { success?: boolean }).success) {
+              void track('session_started', {
+                mode: cfg.mode,
+                camera: cfg.cameraEnabled,
+                strict: cfg.strictMode,
+                duration: cfg.durationMinutes,
+              });
+            }
+            sendResponse(result);
+          })
+          .catch((err) => {
+            void logError('background:start_session', err);
+            sendResponse({ error: String(err) });
+          });
         return true; // async response
+      }
 
       case 'STOP_SESSION':
         sessionManager.stopSession()
@@ -185,13 +208,31 @@ async function broadcastToWebTabs(type: string, payload: unknown): Promise<void>
   }
 }
 
-// Hook session-manager để tự động broadcast khi finalize.
+// Hook session-manager để tự động broadcast + ghi nhận analytics khi finalize.
 sessionManager.onFinalized?.((result) => {
   broadcastToWebTabs('SESSION_FINALIZED', result);
+  // Đăng ký chứng chỉ với backend để có xác thực THẬT (no-op nếu chưa cấu hình)
+  void registerCertificate(result);
+  // Bucket điểm (không log điểm thô để giữ tính tổng hợp)
+  const score = result.finalScore ?? 0;
+  const scoreBucket = score >= 85 ? 'A+' : score >= 70 ? 'B' : score >= 55 ? 'C' : 'D-';
+  void track('session_completed', {
+    scoreBucket,
+    alerts: result.alerts?.length ?? 0,
+    samples: result.samples.length,
+    camera: result.config.cameraEnabled,
+  });
 });
 
 // ============================================================
 // Startup – Restore session if SW was restarted
 // ============================================================
+
+// Watchdog: chrome.alarms đánh thức SW nếu bị kill giữa phiên → nối lại sampling
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === sessionManager.SESSION_WATCHDOG_ALARM) {
+    sessionManager.watchdogCheck().catch((err) => logError('background:watchdog', err));
+  }
+});
 
 sessionManager.restoreSession();

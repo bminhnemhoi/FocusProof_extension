@@ -37,16 +37,26 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
     name: 'Marathon',
     nameEn: 'Marathon',
     description: 'Hoàn thành phiên ≥ 60 phút',
-    check: (session) => session.config.durationMinutes >= 60,
+    // Xét theo thời gian THỰC TẾ đã chạy, không phải thời lượng cấu hình —
+    // phiên 90' bị dừng ở phút thứ 5 không được tính Marathon.
+    check: (session) => {
+      if (!session.endTime) return false;
+      return session.endTime - session.startTime >= 60 * 60 * 1000;
+    },
   },
   {
     id: 'no_alerts',
     name: 'Không Xao Nhãng',
     nameEn: 'Zero Distractions',
-    description: 'Hoàn thành phiên không có alert nào',
+    description: 'Hoàn thành phiên không có cảnh báo nào',
     check: (session) => {
-      // Kiểm tra tất cả samples đều goalCompliant và không idle
-      return session.samples.every((s) => s.goalCompliant && !s.activity.idle);
+      if (session.samples.length === 0) return false;
+      // Không có cảnh báo thực tế nào được ghi (face-lost/idle/tab/outside)…
+      const noRealAlerts = (session.alerts?.length ?? 0) === 0;
+      // …và mọi sample đều đúng mục tiêu + không idle (giữ tiêu chí cũ để
+      // tương thích với phiên chưa lưu alerts).
+      const allEngaged = session.samples.every((s) => s.goalCompliant && !s.activity.idle);
+      return noRealAlerts && allEngaged;
     },
   },
   {

@@ -5,16 +5,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildAnalysisInput, analyzeSession } from '@/utils/ai-analysis';
+import { buildAnalysisInput, analyzeSession, analyzeSessionSmart } from '@/utils/ai-analysis';
 import type { SessionData } from '@/utils/types';
 
 // ── Mock dependencies ──
 vi.mock('@/utils/api-key', () => ({
-  getApiKey: vi.fn(),
+  getApiKey: vi.fn(() => null),
+  getAIProxyUrl: vi.fn(() => null),
+  isRemoteAIConfigured: vi.fn(() => false),
 }));
 
-import { getApiKey } from '@/utils/api-key';
+import { getApiKey, getAIProxyUrl, isRemoteAIConfigured } from '@/utils/api-key';
 const mockedGetApiKey = vi.mocked(getApiKey);
+const mockedGetProxyUrl = vi.mocked(getAIProxyUrl);
+const mockedIsRemoteConfigured = vi.mocked(isRemoteAIConfigured);
 
 // ── Helper: tạo session mẫu ──
 function createMockSession(overrides?: Partial<SessionData>): SessionData {
@@ -136,6 +140,7 @@ describe('analyzeSession', () => {
   beforeEach(() => {
     mockFetch = vi.fn();
     globalThis.fetch = mockFetch;
+    mockedGetProxyUrl.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -143,11 +148,27 @@ describe('analyzeSession', () => {
     vi.restoreAllMocks();
   });
 
-  it('should throw when API key is not configured', async () => {
+  it('should throw when neither proxy nor API key is configured', async () => {
     mockedGetApiKey.mockReturnValue(null);
+    mockedGetProxyUrl.mockReturnValue(null);
     const session = createMockSession();
 
-    await expect(analyzeSession(session)).rejects.toThrow('API key chưa được cấu hình');
+    await expect(analyzeSession(session)).rejects.toThrow('AI remote chưa được cấu hình');
+  });
+
+  it('should route through backend proxy without Authorization header when proxy configured', async () => {
+    mockedGetApiKey.mockReturnValue('sk-test-key');
+    mockedGetProxyUrl.mockReturnValue('https://api.focusproof.com/ai-analyze');
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: VALID_AI_RESPONSE } }],
+      })),
+    );
+
+    await analyzeSession(createMockSession());
+    const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.focusproof.com/ai-analyze');
+    expect((opts.headers as Record<string, string>)['Authorization']).toBeUndefined();
   });
 
   it('should call OpenAI API with correct params', async () => {
@@ -296,5 +317,59 @@ describe('analyzeSession', () => {
     const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(opts.body as string);
     expect(body.messages[1].content).toContain('Đọc tài liệu kỹ thuật phần mềm');
+  });
+});
+
+describe('analyzeSessionSmart (demo-safe orchestrator)', () => {
+  const originalFetch = globalThis.fetch;
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn();
+    globalThis.fetch = mockFetch;
+    mockedGetProxyUrl.mockReturnValue(null);
+    mockedGetApiKey.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('should use offline engine (no network) when remote AI is NOT configured', async () => {
+    mockedIsRemoteConfigured.mockReturnValue(false);
+
+    const { result, source } = await analyzeSessionSmart(createMockSession());
+
+    expect(source).toBe('local');
+    expect(result.summaryVi).toBeTruthy();
+    expect(result.summaryEn).toBeTruthy();
+    expect(result.recommendations.length).toBeGreaterThan(0);
+    expect(mockFetch).not.toHaveBeenCalled(); // demo không phụ thuộc mạng
+  });
+
+  it('should return source=gpt when remote succeeds', async () => {
+    mockedIsRemoteConfigured.mockReturnValue(true);
+    mockedGetApiKey.mockReturnValue('sk-test-key');
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: VALID_AI_RESPONSE } }],
+      })),
+    );
+
+    const { source, result } = await analyzeSessionSmart(createMockSession());
+    expect(source).toBe('gpt');
+    expect(result.summaryVi).toBe('Phiên tập trung tốt, có sụt giảm cuối.');
+  });
+
+  it('should fall back to offline (with note) when remote call fails', async () => {
+    mockedIsRemoteConfigured.mockReturnValue(true);
+    mockedGetApiKey.mockReturnValue('sk-test-key');
+    mockFetch.mockRejectedValue(new Error('network down'));
+
+    const { source, note, result } = await analyzeSessionSmart(createMockSession());
+    expect(source).toBe('local');
+    expect(note).toContain('offline');
+    expect(result.summaryVi).toBeTruthy();
   });
 });

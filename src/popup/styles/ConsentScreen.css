@@ -1,0 +1,147 @@
+/* FocusProof – ConsentScreen Styles (disclosure + consent lần đầu) */
+
+.consent-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Hero ── */
+
+.consent-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.consent-hero-icon {
+  font-size: 32px;
+}
+
+.consent-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.consent-sub {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 330px;
+}
+
+/* ── 3 tín hiệu chấm điểm ── */
+
+.consent-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consent-signal {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.consent-signal-icon {
+  font-size: 20px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.consent-signal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.consent-signal-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* ── Section titles & data list ── */
+
+.consent-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.consent-data-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.consent-data-list li::before {
+  content: '✓ ';
+  color: var(--success);
+  font-weight: 700;
+}
+
+/* ── Opt-in toggles ── */
+
+.consent-optins {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consent-optin {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  transition: opacity 0.15s;
+}
+
+.consent-optin--disabled {
+  opacity: 0.55;
+}
+
+.consent-optin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.consent-optin-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.consent-optin-desc {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-top: 5px;
+}
+
+.consent-footnote {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.4;
+}

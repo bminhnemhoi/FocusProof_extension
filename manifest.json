@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FocusProof",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chứng chỉ Tập trung Thông minh & Xác thực – Đo lường và chứng minh mức độ tập trung",
   "permissions": [
     "tabs",
@@ -9,7 +9,8 @@
     "storage",
     "offscreen",
     "notifications",
-    "scripting"
+    "scripting",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -51,10 +52,7 @@
   "externally_connectable": {
     "matches": [
       "https://focusproof.com/*",
-      "https://www.focusproof.com/*",
-      "https://*.vercel.app/*",
-      "http://localhost:5173/*",
-      "http://127.0.0.1:5173/*"
+      "https://www.focusproof.com/*"
     ]
   }
 }

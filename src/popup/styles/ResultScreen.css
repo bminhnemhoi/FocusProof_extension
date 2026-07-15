@@ -42,6 +42,56 @@
   font-weight: 700;
 }
 
+/* ── Score info ("?" giải thích công thức) ── */
+
+.result-grade-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-info-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.score-info-btn:hover,
+.score-info-btn[aria-expanded='true'] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.score-info-popover {
+  margin-top: 4px;
+  padding: 10px 12px;
+  max-width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  text-align: left;
+}
+
+.score-info-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
 .result-info {
   text-align: center;
 }
@@ -89,6 +139,11 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+}
+
+/* Cảnh báo > 0 → dùng token thay hex hardcode */
+.result-stat-value--warning {
+  color: var(--warning);
 }
 
 .result-badges {
@@ -355,6 +410,17 @@
   border-radius: var(--radius);
 }
 
+.ai-source-tag {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .ai-summary-vi {
   font-size: 13px;
   color: var(--text);
@@ -435,4 +501,27 @@
 
 .ai-rec-list li {
   margin-bottom: 2px;
+}
+
+/* Hint chia sẻ inline (thay alert native), tự ẩn sau 3s */
+.share-hint {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: share-hint-in 0.15s ease-out;
+}
+
+@keyframes share-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

@@ -11,6 +11,7 @@ import type { SessionData, SessionMode } from '@/utils/types';
 import { getGrade } from '@/utils/focus';
 import { storage } from '@/utils/storage';
 import { BADGE_DEFINITIONS } from '@/utils/gamification';
+import { csvEscape } from '@/utils/csv';
 
 /** Map badge ID → Vietnamese name */
 const BADGE_NAME_MAP = Object.fromEntries(
@@ -29,7 +30,18 @@ const MODE_LABELS: Record<SessionMode, string> = {
   'video-lecture': '🎥 Video',
 };
 
-/** Tạo dữ liệu heatmap 7 ngày gần nhất */
+/**
+ * Ngày LOCAL dạng YYYY-MM-DD. KHÔNG dùng toISOString() vì đó là ngày UTC —
+ * với người dùng VN (UTC+7) phiên lúc 23h sẽ bị gom nhầm sang ngày khác.
+ */
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Tạo dữ liệu heatmap 7 ngày gần nhất (nhóm theo ngày LOCAL) */
 function buildHeatmap(sessions: SessionData[]) {
   const days: { label: string; date: string; count: number; avgScore: number }[] = [];
   const now = new Date();
@@ -37,9 +49,9 @@ function buildHeatmap(sessions: SessionData[]) {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const daySessions = sessions.filter(
-      (s) => new Date(s.startTime).toISOString().slice(0, 10) === dateStr,
+      (s) => localDateStr(new Date(s.startTime)) === dateStr,
     );
     const avg =
       daySessions.length > 0
@@ -55,15 +67,16 @@ function buildHeatmap(sessions: SessionData[]) {
   return days;
 }
 
+/** M\u00E0u heatmap theo m\u1EE9c \u0111i\u1EC3m \u2014 d\u00F9ng CSS variables (h\u1ED7 tr\u1EE3 dark mode) */
 function heatmapColor(score: number, count: number): string {
   if (count === 0) return 'var(--bg-secondary)';
-  if (score >= 80) return '#22c55e';
-  if (score >= 60) return '#eab308';
-  if (score >= 40) return '#f97316';
-  return '#ef4444';
+  if (score >= 80) return 'var(--heat-good, var(--success))';
+  if (score >= 60) return 'var(--heat-mid, #eab308)';
+  if (score >= 40) return 'var(--heat-low, #f97316)';
+  return 'var(--heat-bad, var(--danger))';
 }
 
-/** Export sessions to CSV */
+/** Export sessions to CSV (escape chu\u1EA9n RFC 4180 qua csvEscape) */
 function exportCSV(sessions: SessionData[]) {
   const header = 'ID,Task,Mode,Start,End,Duration(min),Score,Camera,Samples\n';
   const rows = sessions.map((s) => {
@@ -71,7 +84,17 @@ function exportCSV(sessions: SessionData[]) {
     const end = s.endTime ? new Date(s.endTime).toISOString() : '';
     const dur = s.endTime ? Math.round((s.endTime - s.startTime) / 60000) : s.config.durationMinutes;
     const score = Math.round(s.finalScore ?? 0);
-    return `${s.id},"${s.config.taskName}",${s.config.mode},${start},${end},${dur},${score},${s.config.cameraEnabled},${s.samples.length}`;
+    return [
+      csvEscape(s.id),
+      csvEscape(s.config.taskName),
+      csvEscape(s.config.mode),
+      csvEscape(start),
+      csvEscape(end),
+      csvEscape(dur),
+      csvEscape(score),
+      csvEscape(s.config.cameraEnabled),
+      csvEscape(s.samples.length),
+    ].join(',');
   });
 
   const csv = header + rows.join('\n');
@@ -79,7 +102,7 @@ function exportCSV(sessions: SessionData[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `FocusProof_History_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `FocusProof_History_${localDateStr(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

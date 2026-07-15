@@ -177,6 +177,86 @@
   color: var(--danger);
 }
 
+/* ──── Error Log List ──── */
+
+.diag-error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diag-error-list-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.diag-error-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diag-error-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.diag-error-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-error-context {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.diag-error-message {
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.diag-error-stack summary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.diag-error-stack summary:hover {
+  color: var(--primary);
+}
+
+.diag-error-stack pre {
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
 /* ──── Action Button ──── */
 
 .diag-btn {

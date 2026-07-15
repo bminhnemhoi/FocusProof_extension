@@ -82,15 +82,34 @@ describe('checkBadges', () => {
     expect(badges).toContain('focus_master'); // should also get focus_master
   });
 
-  it('should award long_session for >= 60 minutes', () => {
+  it('should award long_session for >= 60 minutes of ACTUAL runtime', () => {
+    const start = Date.now();
     const session = createMockSession({
       config: {
         ...createMockSession().config,
         durationMinutes: 60,
       },
+      // Badge xét thời gian THỰC (endTime - startTime), không phải config
+      startTime: start,
+      endTime: start + 60 * 60 * 1000,
     });
     const badges = checkBadges(session);
     expect(badges).toContain('long_session');
+  });
+
+  it('should NOT award long_session when a 90-minute config was stopped early', () => {
+    const start = Date.now();
+    const session = createMockSession({
+      config: {
+        ...createMockSession().config,
+        durationMinutes: 90,
+      },
+      // Cấu hình 90' nhưng dừng ở phút thứ 5 → không được Marathon
+      startTime: start,
+      endTime: start + 5 * 60 * 1000,
+    });
+    const badges = checkBadges(session);
+    expect(badges).not.toContain('long_session');
   });
 
   it('should NOT award long_session for < 60 minutes', () => {

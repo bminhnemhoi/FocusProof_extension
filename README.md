@@ -1,17 +1,22 @@
 <div align="center">
 
-# 🎯 FocusProof
+<img src="public/icons/icon128.png" width="96" alt="FocusProof logo" />
+
+# FocusProof
 
 ### Chứng chỉ Tập trung Thông minh & Xác thực
 
-**Chrome Extension (Manifest V3) giúp đo lường, ghi nhận và chứng minh mức độ tập trung**  
-**trong các phiên làm việc & học tập — 100% xử lý cục bộ.**
+**Chrome Extension (Manifest V3) đo mức độ tập trung bằng 3 tín hiệu hành vi độc lập,**
+**rồi biến mỗi giờ học/làm việc thành một chứng chỉ số có thể xác thực công khai.**
 
-![Version](https://img.shields.io/badge/version-1.0.0-6366f1?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.1-6366f1?style=flat-square)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-4285F4?style=flat-square&logo=googlechrome&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-184%20passed-22c55e?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-266%20client%20%2B%2013%20server-22c55e?style=flat-square)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)
+
+*"Azota chứng minh bạn không gian lận lúc thi — FocusProof chứng minh bạn có nỗ lực lúc học."*
 
 </div>
 
@@ -19,60 +24,162 @@
 
 ## 📋 Mục lục
 
-- [Giới thiệu](#-giới-thiệu)
+- [Vì sao FocusProof?](#-vì-sao-focusproof)
+- [Kiến trúc hệ thống](#-kiến-trúc-hệ-thống)
+- [3-Signal Focus Engine](#-3-signal-focus-engine)
+- [Luồng xác thực chứng chỉ](#-luồng-xác-thực-chứng-chỉ)
 - [Tính năng](#-tính-năng)
+- [Cải tiến theo góp ý Ban giám khảo](#-cải-tiến-theo-góp-ý-ban-giám-khảo)
 - [Tech Stack](#-tech-stack)
-- [Cài đặt & Setup](#-cài-đặt--setup)
-- [Hướng dẫn sử dụng](#-hướng-dẫn-sử-dụng)
-- [Kiểm thử](#-kiểm-thử)
+- [Cài đặt & Chạy thử](#-cài-đặt--chạy-thử)
+- [Backend (tùy chọn)](#-backend-tùy-chọn)
+- [Kiểm thử & Chất lượng](#-kiểm-thử--chất-lượng)
 - [Cấu trúc dự án](#-cấu-trúc-dự-án)
-- [Quyền Extension](#-quyền-extension)
 - [Bảo mật & Quyền riêng tư](#-bảo-mật--quyền-riêng-tư)
 - [Changelog](#-changelog)
-- [Lưu ý quan trọng](#-lưu-ý-quan-trọng)
 
 ---
 
-## 🧠 Giới thiệu
+## 🧠 Vì sao FocusProof?
 
-**FocusProof** kết hợp **ba nguồn tín hiệu thời gian thực** để đánh giá khách quan mức độ tập trung:
+85% sinh viên thừa nhận thường xuyên mất tập trung vì điện thoại và mạng xã hội — nhưng vấn đề lớn hơn là **không ai chứng minh được giờ học thật**: cha mẹ, giảng viên, nhà tuyển dụng, quỹ học bổng đều không có công cụ kiểm chứng. Các app hiện có (Pomodoro, Forest, YPT) chỉ **đếm giờ tự khai** — treo máy đi chơi vẫn được tính là "tập trung".
 
-| Tín hiệu | Công nghệ | Mô tả |
-|-----------|-----------|-------|
-| 👤 **Face Detection** | MediaPipe BlazeFace (WASM) | Phát hiện sự hiện diện khuôn mặt qua webcam — không lưu ảnh |
-| ⌨️ **Activity Tracking** | Content Script | Bàn phím (IME tiếng Việt), chuột, cuộn trang, paste, idle |
-| 🌐 **Tab & Screen Tracking** | Chrome APIs | Domain/URL realtime, phát hiện rời Chrome |
+FocusProof giải quyết bằng cách **đo hành vi thật** và **phát hành bằng chứng xác thực được**:
 
-Kết quả phiên được tổng hợp thành **chứng chỉ PDF 2 trang chuyên nghiệp** kèm phân tích AI song ngữ Việt – Anh, mã QR tự xác thực SHA-256, và watermark chống giả mạo.
+| | Công cụ đếm giờ | **FocusProof** |
+|---|---|---|
+| Đo tập trung | ⏱ tự khai, dễ gian lận | ✅ 3 tín hiệu hành vi độc lập, chấm mỗi ~6 giây |
+| Bằng chứng | ❌ không có | ✅ chứng chỉ PDF + QR, máy chủ ký HMAC |
+| Riêng tư | — | ✅ AI khuôn mặt chạy 100% on-device, 0 ảnh rời máy |
+| Khi mất mạng | — | ✅ hoạt động đầy đủ offline (AI insight có engine cục bộ) |
+
+---
+
+## 🏗 Kiến trúc hệ thống
+
+**Nguyên tắc: xử lý tại thiết bị — xác thực tại máy chủ.** Extension hoạt động đầy đủ offline; backend là lớp xác thực cộng thêm, không phải phụ thuộc cứng.
+
+```mermaid
+flowchart LR
+  subgraph EXT["🧩 Chrome Extension — Manifest V3"]
+    P["Popup<br/>(React 19 + TS)"] <-->|"chrome.runtime<br/>messages"| SW["Service Worker<br/>vòng lặp chấm điểm ~6s<br/>watchdog chrome.alarms"]
+    SW <--> CS["Content Script<br/>widget realtime<br/>hoạt động chuột/phím"]
+    SW <--> OS["Offscreen Document<br/>MediaPipe BlazeFace WASM<br/>(nhận diện on-device)"]
+    SW --> ST[("chrome.storage.local<br/>phiên · lịch sử · huy hiệu")]
+  end
+
+  subgraph BE["🖥 Backend tùy chọn — Node/Express + SQLite"]
+    AI["POST /api/ai-analyze<br/>proxy GPT-4o-mini (key ở server)"]
+    CERT["POST /api/certificates<br/>ký HMAC-SHA-256 v2"]
+    VER["GET /verify/:id<br/>trang xác thực công khai"]
+    EV["POST /api/events<br/>analytics ẩn danh"]
+    DB[("SQLite<br/>node:sqlite")]
+    CERT --> DB
+    VER --> DB
+    EV --> DB
+  end
+
+  SW -.->|HTTPS| AI
+  SW -.->|HTTPS| CERT
+  SW -.->|HTTPS| EV
+  PUB["🔍 Người xác thực<br/>(quét QR trên chứng chỉ)"] --> VER
+```
+
+---
+
+## 🎯 3-Signal Focus Engine
+
+Lõi công nghệ độc quyền: **ba tín hiệu độc lập kiểm chứng chéo** (triangulation). Giả một tín hiệu thì dễ — giả cả ba cùng lúc gần như phải… học thật.
+
+```mermaid
+flowchart LR
+  F["👤 Tín hiệu khuôn mặt<br/>BlazeFace WASM — 100% on-device<br/>chỉ đọc CÓ/KHÔNG khuôn mặt"]
+  A["⌨️ Tín hiệu hoạt động<br/>chuột · bàn phím (IME tiếng Việt)<br/>phát hiện idle / treo máy"]
+  T["🌐 Tín hiệu tab & domain<br/>đối chiếu mục tiêu phiên<br/>match theo hostname — chống subdomain giả"]
+
+  F --> E{"3-SIGNAL<br/>FOCUS ENGINE<br/>chấm mỗi ~6 giây"}
+  A --> E
+  T --> E
+
+  E --> S["📊 Focus Score 0–100<br/>+ xếp hạng A/B/C"]
+  E --> W["🚨 Cảnh báo realtime<br/>mất mặt · idle · sai tab · rời Chrome"]
+  S --> C["📜 Chứng chỉ PDF + QR<br/>ký HMAC phía máy chủ"]
+```
+
+> **Khiêm tốn khoa học:** FocusProof đo *điều kiện và hành vi* tập trung (hiện diện + tương tác + đúng tab) — **không** tuyên bố đọc trạng thái nhận thức hay cảm xúc (vùng đã bị EU AI Act giới hạn trong giáo dục).
+
+---
+
+## 🔏 Luồng xác thực chứng chỉ
+
+Điểm khác biệt cốt lõi so với mọi focus app: chứng chỉ **không thể giả mạo**, vì bản gốc do máy chủ lưu và ký.
+
+```mermaid
+sequenceDiagram
+  actor U as Người học
+  participant X as Extension
+  participant S as Server (SQLite)
+  actor V as Người xác thực
+
+  U->>X: Kết thúc phiên tập trung
+  X->>X: Tổng hợp điểm + băm SHA-256 (dấu vân tay toàn vẹn)
+  X->>S: Đăng ký bản ghi {điểm, hạng, hash}
+  S->>S: Ký HMAC-SHA-256 v2 bằng khoá bí mật<br/>chống ghi đè (409)
+  S-->>X: id bản ghi + chữ ký
+  X-->>U: Chứng chỉ PDF nhúng QR → /verify/:id
+  Note over U,V: Người học chia sẻ chứng chỉ (cha mẹ / giảng viên / nhà tuyển dụng)
+  V->>S: Quét QR → GET /verify/:id
+  S-->>V: Bản gốc do server ký — đối chiếu điểm/ngày/nhiệm vụ
+  Note over V: Sửa 1 ký tự trên PDF → hash mất hiệu lực
+```
+
+> **Trung thực kỹ thuật:** SHA-256 phía client là *dấu vân tay toàn vẹn dữ liệu* (integrity), không phải chữ ký số. Chữ ký thật là **HMAC do server thực hiện** — client không bao giờ giữ khoá bí mật.
 
 ---
 
 ## ✨ Tính năng
 
-### 🔍 Core Engine
-- **Face Detection** — MediaPipe BlazeFace chạy 100% local (WASM + GPU fallback CPU)
-- **Activity Tracking** — 10 loại sự kiện (keydown/IME, click, mousemove, scroll, input, focusin, window focus, touchstart, paste, drop)
-- **Goal-based Evaluation** — 4 chế độ mục tiêu + custom allowed domains
-- **Real-time Alert System** — 4 loại cảnh báo (face-lost 8s, idle 25s, tab-violation 30s, outside-chrome 30s)
-- **Camera-Off Mode** — chạy không camera, tự điều chỉnh trọng số (Activity 60% + Tab 40%)
-- **Multi-Tab Guard** — Strict Mode (1 tab), domain whitelist tùy chỉnh
+### Core Engine
+- **Face Detection** — MediaPipe BlazeFace chạy 100% local (WASM, GPU → CPU fallback); chỉ đọc confidence, không lưu ảnh
+- **Activity Tracking** — 10 loại sự kiện (keydown/IME, click, mousemove, scroll, paste…); **mặc định KHÔNG thu nội dung gõ**, không bao giờ đọc ô mật khẩu/OTP/thẻ
+- **Tab & Domain Tracking** — match theo hostname/subdomain (chống lách kiểu `fake-notion.so.evil.com`), phát hiện rời Chrome qua `windows.getLastFocused`
+- **4 chế độ mục tiêu** (Study / Work / Programming / Video Lecture) + custom domain + **Strict Mode thực thi thật** (phạt điểm khi đổi tab)
+- **Cảnh báo realtime 4 loại** — face-lost, idle, tab-violation, outside-chrome — **đếm thật, lưu thật vào phiên**
+- **Camera-Off Mode** — không camera vẫn chấm điểm (tự điều chỉnh trọng số)
+- **Watchdog `chrome.alarms`** — phiên sống sót kể cả khi Service Worker bị Chrome kill
 
-### 🎨 Trải nghiệm người dùng
-- **Floating Widget** — Shadow DOM overlay, draggable, minimize 48px, countdown 1s, touch support
-- **7 màn hình React** — Start → Camera → Running → Result → History → Diagnostics → Error Boundary
-- **Dark Theme** — 3 chế độ (system/light/dark) với CSS variables
-- **Gamification** — 10 huy hiệu thành tích (Bước Đầu Tiên, Bậc Thầy, Marathon, Cú Đêm...)
+### Trải nghiệm & minh bạch
+- **Consent Screen** trước phiên đầu — liệt kê đúng dữ liệu thu thập, camera & nội dung gõ là 2 opt-in riêng (chuẩn Chrome Web Store)
+- **Floating Widget** — Shadow DOM, kéo thả (đã fix bug phình màn hình), minimize, hỗ trợ cảm ứng
+- **7 màn hình React** + Dark theme (system/light/dark) + ARIA accessibility
+- **Gamification** — 10 huy hiệu (badge Marathon xét theo thời gian thực)
 
-### 📄 Output & Phân tích
-- **Certificate PDF 2 trang** — Page 1: Score + Domains + Signal Breakdown | Page 2: AI Analysis only
-- **AI Analysis** — GPT-4o-mini phân tích song ngữ Việt-Anh, coaching tone, trend analysis (opt-in)
-- **Voice Note** — Web Speech API, tối đa 30s, tích hợp vào AI prompt
-- **Quick Test** — Chế độ test nhanh 3 phút
+### Đầu ra & phân tích
+- **Chứng chỉ PDF 2 trang** — điểm, biểu đồ domain, signal breakdown, QR xác thực, watermark, font Việt
+- **AI Insight 2 tầng** — GPT-4o-mini qua backend proxy (key ở server); **tự rơi về engine phân tích offline** khi không có mạng/backend → không bao giờ lỗi trước giám khảo; UI ghi rõ nguồn phân tích
+- **Analytics + Error logging** — privacy-first (không URL/PII), ring buffer cục bộ, panel trong Diagnostic Dashboard
+- **History** — heatmap 7 ngày, biểu đồ, lọc, **export CSV** + **Backup/Restore JSON** (versioning + validate)
 
-### 📊 Lịch sử & Chia sẻ
-- **History** — Heatmap 7 ngày, biểu đồ cột, lọc theo mode, export CSV
-- **Domain Duration Tracking** — Biểu đồ bar + pie chart trực quan trong ResultScreen
-- **Chia sẻ** — Nút share Facebook/TikTok, download PDF
+---
+
+## ✅ Cải tiến theo góp ý Ban giám khảo
+
+Toàn bộ góp ý vòng trước đã được kiểm chứng lại và xử lý — **mỗi lỗi sửa xong đều kèm test hồi quy**:
+
+| # | Góp ý | Trạng thái | Cách xử lý | Bằng chứng |
+|---|---|:---:|---|---|
+| 1 | Bug thống kê cảnh báo luôn = 0 | ✅ | Lưu `alerts[]` vào phiên ngay trong vòng lặp lấy mẫu; thống kê/AI/chứng chỉ đọc số thật | 3 test hồi quy trong `focus.test.ts` |
+| 2 | AI hỏng khi demo (key trống) | ✅ | Engine phân tích offline (`local-analysis.ts`) + backend proxy, tự fallback | 8 test; AI không bao giờ báo lỗi |
+| 3 | Chưa có backend | ✅ | `server/` Express + **SQLite thật** (`node:sqlite`), 5 endpoint | 13/13 test server PASS |
+| 4 | CSDL mất khi gỡ, không xác thực | ✅ | Server lưu + ký HMAC bản ghi chứng chỉ, trang `/verify/:id` công khai | `server/index.js` + test |
+| 5 | Quyền `<all_urls>` quá rộng | ✅ Giải trình | Justification đầy đủ + kế hoạch thu hẹp 2 bước | [`docs/PERMISSIONS_AND_SECURITY.md`](docs/PERMISSIONS_AND_SECURITY.md) |
+| 6 | Thiếu analytics + error logging | ✅ | `analytics.ts` phủ background/popup/offscreen/content-script + panel dashboard | 6 test |
+| 7 | "Chữ ký SHA-256" chưa phải chữ ký | ✅ | Đổi nhãn trung thực ("Integrity") + chữ ký HMAC thật ở server | 7 test |
+| 8 | Gói build nặng, WASM lặp 2 nơi | ✅ | Plugin dọn bản trùng sau build | **41MB → 22MB** (−46%), zip nộp 7.7MB |
+| 9 | Đo hiệu năng thật (CPU/RAM) | 🔶 | Có công cụ + phương pháp đo (Chrome Task Manager, phiên 60–90') | Panel Hiệu năng trong Diagnostic |
+| 10 | Link demo/GitHub/video trống | ✅ | Repo này + checklist chốt link trước ngày nộp | [`docs/BAO_CAO_CAI_TIEN_FOCUSPROOF.md`](docs/BAO_CAO_CAI_TIEN_FOCUSPROOF.md) |
+
+Ngoài ra, đợt audit nội bộ (30 AI agent đọc toàn bộ mã) phát hiện và đã sửa thêm: bug kéo widget phình màn hình, Strict Mode không thực thi, cờ outside-chrome bị reset oan, lọc ô mật khẩu cho activity tracking, gỡ API key khỏi bundle client (+ CI `check-no-secrets` chặn tái diễn), consent screen, watchdog alarms, backup/restore, CI/CD. Chi tiết: [`docs/DANH_GIA_VONG_CHUNG_KET.md`](docs/DANH_GIA_VONG_CHUNG_KET.md).
 
 ---
 
@@ -80,267 +187,171 @@ Kết quả phiên được tổng hợp thành **chứng chỉ PDF 2 trang chuy
 
 | Layer | Công nghệ |
 |-------|-----------|
-| **Build** | Vite 5 + @crxjs/vite-plugin |
-| **UI** | React 19 + TypeScript (strict mode) |
+| **Build** | Vite 5 + @crxjs/vite-plugin + plugin prune WASM trùng |
+| **UI** | React 19 + TypeScript strict |
 | **Face Detection** | @mediapipe/tasks-vision 0.10.14 (BlazeFace, WASM local) |
-| **PDF** | jsPDF + html2canvas |
-| **QR Code** | qrcode |
-| **AI** | OpenAI GPT-4o-mini (opt-in, 30s timeout) |
-| **Testing** | Vitest 2.1 + jsdom + Chrome API mocks |
-| **Lint** | ESLint 9 + Prettier 3 + husky + lint-staged |
+| **PDF / QR** | jsPDF + html2canvas + qrcode |
+| **AI** | GPT-4o-mini qua backend proxy · engine phân tích offline thuần TS |
+| **Backend** | Node 18+ / Express 4 · SQLite (`node:sqlite`) · HMAC-SHA-256 |
+| **Testing** | Vitest 2.1 + jsdom + Chrome API mocks (266 test) · `node --test` (13 test) |
+| **Chất lượng** | ESLint 9 · Prettier 3 · husky + lint-staged · GitHub Actions CI · `check-no-secrets` |
 
 ---
 
-## 🚀 Cài đặt & Setup
+## 🚀 Cài đặt & Chạy thử
 
-### 1. Clone & Install
+### 1. Clone & install
 
 ```bash
-git clone <repo-url>
-cd Extension_FocusProof
-npm install
+git clone https://github.com/bminhnemhoi/FocusProof_extension.git
+cd FocusProof_extension
+npm install   # postinstall tự copy MediaPipe WASM/model
 ```
 
-> `npm install` tự động chạy `postinstall` script để copy MediaPipe WASM/model files.
-
-### 2. Cấu hình API Key (tùy chọn)
+### 2. Cấu hình (tùy chọn — bỏ qua vẫn chạy đầy đủ)
 
 ```bash
 cp .env.example .env
 ```
 
-Mở `.env` và thay `sk-your-api-key-here` bằng API key thật từ [OpenAI Platform](https://platform.openai.com/api-keys).
+`.env` chỉ chứa **3 URL** trỏ tới backend (không có API key nào ở client):
 
-> **Không có key?** App vẫn chạy bình thường — chỉ tính năng AI Analysis bị vô hiệu.
-
-### 3. Build Extension
-
-```bash
-# Development (HMR)
-npm run dev
-
-# Production build
-npm run build
+```ini
+VITE_AI_PROXY_URL=      # proxy AI — key nằm ở server
+VITE_VERIFY_BASE_URL=   # trang xác thực QR
+VITE_ANALYTICS_URL=     # endpoint analytics ẩn danh
 ```
 
-### 4. Load vào Chrome
+> Để trống tất cả → extension chạy **offline-first**: AI dùng engine cục bộ, QR dùng hash tự chứng thực.
 
-1. Mở `chrome://extensions/`
-2. Bật **Developer mode** (góc trên phải)
-3. Click **Load unpacked** → chọn thư mục `dist/`
-4. Extension **FocusProof** xuất hiện trên toolbar
+### 3. Build & nạp vào Chrome
 
-> 💡 Sau mỗi lần build lại, nhấn nút reload (🔄) trên card FocusProof trong `chrome://extensions/`.
+```bash
+npm run build        # tsc + vite build → dist/ (~22MB)
+```
+
+1. Mở `chrome://extensions/` → bật **Developer mode**
+2. **Load unpacked** → chọn thư mục `dist/`
+3. Ghim icon FocusProof lên toolbar → bấm để bắt đầu phiên đầu tiên
+
+### 4. Đóng gói nộp / phát hành
+
+```bash
+npm run package      # → focusproof-v1.0.1.zip (7.7MB, đã quét secret)
+```
 
 ---
 
-## 📖 Hướng dẫn sử dụng
+## 🖥 Backend (tùy chọn)
 
-### Luồng sử dụng cơ bản
-
-```
-1. Click icon FocusProof → Popup mở ra
-2. Nhập tên task → chọn mode (Study / Work / Programming / Video Lecture)
-3. Cấu hình: thời gian, camera, allowed domains, strict mode
-4. Bấm "Bắt đầu" → (Camera modal nếu bật) → Session chạy
-5. Widget floating hiển thị trên tab → countdown realtime
-6. Chuyển tab sai mục tiêu → cảnh báo đỏ nhắc lại mỗi 30s
-7. Hết giờ / bấm Dừng → Kết quả + Badges + AI + PDF + Share
+```bash
+cd server
+cp .env.example .env    # điền OPENAI_API_KEY + CERT_SIGNING_SECRET (≥32 ký tự)
+npm install
+npm start               # http://localhost:8787
+npm test                # 13/13 test PASS
 ```
 
-### 4 chế độ mục tiêu
+| Endpoint | Vai trò |
+|---|---|
+| `POST /api/ai-analyze` | Proxy GPT-4o-mini — API key chỉ nằm ở server |
+| `POST /api/certificates` | Lưu + ký HMAC-SHA-256 v2 bản ghi chứng chỉ (chống ghi đè 409) |
+| `GET /verify/:id` | Trang xác thực công khai — quét QR là ra bản gốc |
+| `POST /api/events` | Nhận analytics + error log ẩn danh |
+| `GET /api/stats` | Thống kê tổng hợp |
 
-| Mode | Allowed Domains mặc định | External Apps |
-|------|--------------------------|---------------|
-| 📚 **Study** | docs.google.com, drive.google.com, notion.so, evernote.com | ✅ Cho phép |
-| 💼 **Work** | docs.google.com, drive.google.com, notion.so | ✅ Cho phép |
-| 💻 **Programming** | github.com, gitlab.com, localhost, vscode.dev, stackblitz.com | ❌ Không |
-| 🎥 **Video Lecture** | youtube.com, coursera.org, udemy.com, zoom.us | ❌ Không |
-
-> Bạn có thể **thêm custom domains** và **override external apps rule** trong Advanced Settings.
-
-### Hệ thống cảnh báo realtime
-
-| Alert | Điều kiện | Hành vi |
-|-------|-----------|---------|
-| 😶 Face Lost | Không thấy mặt > 8 giây | Widget rung + toast |
-| 💤 Idle | Không hoạt động > 25 giây | Cảnh báo idle |
-| 🚫 Tab Violation | Domain không phù hợp mục tiêu | Flash đỏ, nhắc lại 30s |
-| 🔴 Outside Chrome | Rời Chrome (khi không cho phép) | Widget đỏ, nhắc lại 30s |
-
-### Chứng chỉ PDF 2 trang
-
-- **Page 1** — Focus Score (gradient circle), session info, top domains (bar chart), signal breakdown, QR code SHA-256, watermark
-- **Page 2** — AI Analysis only: tóm tắt Việt/Anh, focus pattern, recommendations
+Hướng dẫn deploy (Render/Railway/Fly): xem [`server/README.md`](server/README.md).
 
 ---
 
-## 🧪 Kiểm thử
+## 🧪 Kiểm thử & Chất lượng
 
 ```bash
-# Chạy tất cả tests (184 tests, 11 files)
-npm test
-
-# Watch mode
-npm run test:watch
-
-# Type check
-npm run type-check
-
-# Lint
-npm run lint
-
-# Format
-npm run format
+npm test              # 266/266 test client (17 file)
+npm run lint          # ESLint — 0 lỗi
+npm run type-check    # tsc strict — 0 lỗi
+npm run build         # build production
+npm run check:secrets # quét API key lộ trong dist
+cd server && npm test # 13/13 test server
 ```
 
-### Test Coverage
+Kết quả kiểm chứng hiện tại (chạy lại được từ mã nguồn):
 
-| File | Tests | Mô tả |
-|------|:-----:|-------|
-| focus.test.ts | ✅ | Score calculation, grading |
-| goal-evaluator.test.ts | ✅ | isGoalCompliant, isDomainAllowed |
-| alert-system.test.ts | ✅ | 4 alert types, repeat logic |
-| session-manager.test.ts | ✅ | Session lifecycle, sampling |
-| certificate.test.ts | ✅ | PDF generation, fonts, QR |
-| ai-analysis.test.ts | ✅ | AI prompt, timeout, error handling |
-| gamification.test.ts | ✅ | 10 badges criteria |
-| tab-tracker.test.ts | ✅ | Tab state tracking |
-| content-script.test.ts | ✅ | Activity tracking, messages |
-| qr-code.test.ts | ✅ | QR generation |
-| voice-note.test.ts | ✅ | Web Speech API |
+```
+Lint:        0 lỗi                          ✅
+Type-check:  0 lỗi (TypeScript strict)      ✅
+Client test: 266/266 PASS (17 file)         ✅
+Server test: 13/13 PASS                     ✅
+Build:       OK — dist 22MB (từ 41MB)       ✅
+Secrets:     0 key trong dist               ✅
+CI:          GitHub Actions (lint+tsc+test+build)  ✅
+```
+
+Kiểm thử thủ công theo kịch bản: [`MANUAL_TEST_CHECKLIST.md`](MANUAL_TEST_CHECKLIST.md).
 
 ---
 
 ## 📁 Cấu trúc dự án
 
 ```
-Extension_FocusProof/
-├── public/
-│   ├── icons/                 PNG icons (16, 48, 128) + SVG
-│   ├── fonts/                 Roboto TTF (Regular, Bold, Italic)
-│   ├── models/                MediaPipe BlazeFace (.tflite)
-│   ├── wasm/                  MediaPipe WASM runtime (SIMD + noSIMD)
-│   ├── camera-diagnostic.*    Trang kiểm tra camera & micro
-│   ├── alert-diagnostic.*     Trang kiểm tra alert
-│   └── widget-diagnostic.*    Trang kiểm tra widget
+FocusProof_extension/
 ├── src/
-│   ├── background/
-│   │   ├── index.ts           Message router, Chrome events, startup recovery
-│   │   ├── session-manager.ts Session lifecycle, sampling, hash, badges
-│   │   ├── tab-tracker.ts     Tab/window state tracking
-│   │   ├── goal-manager.ts    GoalConfig + TabResult builder
-│   │   ├── alert-manager.ts   Realtime alert state wrapper
-│   │   └── offscreen-manager.ts  Offscreen document lifecycle
-│   ├── content-script/
-│   │   ├── index.ts           Activity tracking (IME-aware) + message handler
-│   │   └── widget.ts          Shadow DOM floating widget + countdown + alerts
-│   ├── offscreen/
-│   │   ├── offscreen.ts       Camera + MediaPipe (GPU → CPU fallback)
-│   │   └── offscreen.html     Hidden video element
-│   ├── popup/
-│   │   ├── components/        7 React components
-│   │   │   ├── StartScreen.tsx       Task, mode, duration, advanced settings
-│   │   │   ├── CameraModal.tsx       Camera permission + preview
-│   │   │   ├── RunningScreen.tsx     Live timer, score, alerts
-│   │   │   ├── ResultScreen.tsx      Score, badges, charts, AI, PDF, Share
-│   │   │   ├── HistoryScreen.tsx     Heatmap, bar chart, filter, CSV
-│   │   │   ├── DiagnosticDashboard.tsx  Camera + permission diagnostics
-│   │   │   └── ErrorBoundary.tsx     React error boundary
-│   │   ├── styles/            CSS per component + global dark theme
-│   │   ├── App.tsx            Screen orchestrator
-│   │   ├── main.tsx           Entry point
-│   │   └── index.html         HTML entry
-│   ├── utils/
-│   │   ├── types.ts           Core types, constants, weights
-│   │   ├── focus.ts           Score calculation & grading
-│   │   ├── storage.ts         chrome.storage wrapper (100 session limit)
-│   │   ├── alert-system.ts    4 alert types with 30s repeat
-│   │   ├── goal-evaluator.ts  isGoalCompliant & isDomainAllowed
-│   │   ├── gamification.ts    10 badges with criteria
-│   │   ├── certificate.ts     2-page PDF (watermark, QR, embedded fonts)
-│   │   ├── ai-analysis.ts     GPT-4o-mini (coaching tone, trend analysis)
-│   │   ├── qr-code.ts         QR with session hash
-│   │   ├── voice-note.ts      Web Speech API (30s max)
-│   │   └── api-key.ts         XOR obfuscation
-│   └── __tests__/             11 test files, 184 tests
-├── manifest.json              Chrome Extension Manifest V3
-├── vite.config.ts             Vite + CRXJS config
-├── vitest.config.ts           Test config (jsdom)
-├── tsconfig.json              TypeScript strict config
-├── eslint.config.js           ESLint 9 flat config
-└── package.json               Dependencies & scripts
+│   ├── background/          Service Worker: session, sampling, tab-tracker, offscreen
+│   ├── content-script/      Widget Shadow DOM + activity tracking (IME-aware)
+│   ├── offscreen/           Camera + MediaPipe BlazeFace (GPU→CPU fallback)
+│   ├── popup/               React 19: Start/Camera/Running/Result/History/
+│   │                        Diagnostic/Consent + ErrorBoundary
+│   ├── utils/               focus (chấm điểm) · goal-evaluator · gamification ·
+│   │                        certificate + certificate-signing · ai-analysis ·
+│   │                        local-analysis (AI offline) · analytics · consent ·
+│   │                        storage (backup/restore) · csv · qr-code · voice-note
+│   └── __tests__/           17 file — 266 test
+├── server/                  Backend Express + SQLite (5 endpoint, 13 test)
+├── public/                  icons · fonts · MediaPipe WASM/model · trang diagnostic
+├── scripts/                 package.mjs · check-no-secrets.mjs · copy-mediapipe.mjs
+├── .github/workflows/ci.yml GitHub Actions: lint + type-check + test + build
+├── docs/                    Báo cáo cải tiến · đánh giá · permissions & security ·
+│                            hồ sơ Web Store · slide thuyết trình
+└── manifest.json            Manifest V3
 ```
-
----
-
-## 🔐 Quyền Extension
-
-| Permission | Mục đích |
-|-----------|----------|
-| `tabs` | Theo dõi tab/domain đang active |
-| `activeTab` | Truy cập tab hiện tại |
-| `storage` | Lưu session, settings, badges (chrome.storage.local) |
-| `offscreen` | Tạo offscreen document cho camera + MediaPipe |
-| `notifications` | Cảnh báo hệ thống khi mất tập trung |
-| `scripting` | Inject content script vào tab đã mở |
-| `host_permissions: <all_urls>` | Activity tracking + widget trên mọi trang |
 
 ---
 
 ## 🛡 Bảo mật & Quyền riêng tư
 
-- **100% xử lý cục bộ** — không gửi dữ liệu lên server (ngoại trừ AI opt-in)
-- Không lưu ảnh/video từ camera — chỉ đọc confidence score
-- Không đọc nội dung trang web — chỉ đọc domain/URL
-- API key được XOR-obfuscate trong memory
-- AI Analysis chỉ hoạt động khi user **chủ động bấm nút**
-- Session hash **SHA-256** xác thực tính toàn vẹn chứng chỉ
-- CSP: `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`
+**5 điều FocusProof KHÔNG làm:**
+
+1. **KHÔNG ghi hình** — không một frame ảnh nào rời thiết bị (BlazeFace chạy on-device, chỉ đọc confidence)
+2. **KHÔNG đọc cảm xúc** / trạng thái tâm lý — chỉ xác nhận 3 sự kiện hành vi khách quan
+3. **KHÔNG thu nội dung gõ phím mặc định** — opt-in riêng; không bao giờ đọc ô mật khẩu/OTP/thẻ
+4. **KHÔNG nhúng API key vào client** — key chỉ ở server; CI có bước `check-no-secrets` chặn tái diễn
+5. **KHÔNG theo dõi âm thầm** — người học tự bấm bắt đầu, widget hiển thị suốt phiên, consent 2 opt-in
+
+Chi tiết kỹ thuật + giải trình từng quyền (`<all_urls>`, `tabs`, `offscreen`…): [`docs/PERMISSIONS_AND_SECURITY.md`](docs/PERMISSIONS_AND_SECURITY.md)
 
 ---
 
 ## 📝 Changelog
 
-### v1.0.0 (2026-04-18)
+### v1.0.1 (07/2026) — Hardening round trước vòng chung kết
+- 🔒 Gỡ API key khỏi bundle client → backend proxy + engine AI offline; thêm `check-no-secrets`
+- 🐛 Fix bug thống kê cảnh báo = 0 · bug kéo widget · Strict Mode thực thi thật · cờ outside-chrome
+- 🗄 Backend SQLite thật + ký HMAC v2 + trang `/verify/:id` + 13 test
+- 🪪 Consent screen 2 opt-in (chuẩn Web Store) · lọc ô mật khẩu cho activity tracking
+- 📈 Analytics + error logging privacy-first · Backup/Restore JSON · watchdog `chrome.alarms`
+- 📦 Build 41MB → 22MB (prune WASM trùng) · CI GitHub Actions · husky
+- ✅ Test: 184 → **266 client + 13 server**
 
-**Initial Release** — Phiên bản chính thức đầu tiên.
-
-- ✅ Core Engine: Face Detection + Activity Tracking + Tab & Screen Tracking
-- ✅ 4 chế độ mục tiêu (Study, Work, Programming, Video Lecture)
-- ✅ Goal-based Evaluation với custom allowed domains
-- ✅ Real-time Alert System (4 loại, repeat 30s)
-- ✅ Floating Widget (Shadow DOM, draggable, minimize, touch)
-- ✅ Certificate PDF 2 trang (watermark, QR SHA-256, font Roboto tiếng Việt)
-- ✅ AI Analysis GPT-4o-mini (song ngữ, coaching tone, trend analysis)
-- ✅ Voice Note (Web Speech API, 30s max)
-- ✅ Quick Test mode (3 phút)
-- ✅ Domain Duration Tracking (bar chart + pie chart)
-- ✅ Gamification (10 huy hiệu)
-- ✅ History (heatmap, biểu đồ, filter, CSV export)
-- ✅ Dark Theme (system/light/dark)
-- ✅ Camera-Off Mode
-- ✅ Multi-Tab Guard + Strict Mode
-- ✅ 184 tests passed (11 files)
-- ✅ TypeScript strict, ESLint, Prettier
-
----
-
-## ⚠️ Lưu ý quan trọng
-
-- **Chrome 116+** là phiên bản tối thiểu
-- File `.env` **không được commit** lên git (đã có trong `.gitignore`)
-- Sau khi reload extension, cần **mở lại tab** để content script inject
-- Camera chỉ hoạt động trong full-tab context (không phải popup)
-- MediaPipe WASM/model files (~18MB) nằm trong `public/` — tự động copy khi `npm install`
-- Luôn chạy `npm run type-check` trước khi build production
+### v1.0.0 (04/2026) — Bản phát hành đầu tiên
+- 3-Signal Engine · 4 chế độ mục tiêu · cảnh báo realtime · widget nổi · chứng chỉ PDF 2 trang
+- AI Analysis song ngữ · gamification 10 huy hiệu · history + CSV · dark theme · 184 test
 
 ---
 
 <div align="center">
 
-**Built with ❤️ using React 19 + TypeScript + Vite 5**
+**Built with ❤️ using React 19 + TypeScript + Vite 5 — verified by 279 automated tests**
 
-*FocusProof — Đo lường tập trung, chứng minh nỗ lực.*
+*FocusProof — Tập trung không còn là cảm giác, mà là bằng chứng có thể xác thực.*
 
 </div>

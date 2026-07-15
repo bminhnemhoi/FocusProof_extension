@@ -6,6 +6,7 @@
 
 import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
+import { logError } from '@/utils/analytics';
 
 interface Props {
   children: ReactNode;
@@ -28,6 +29,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[FocusProof] UI Error:', error, info.componentStack);
+    // Ghi nhận lỗi UI để theo dõi (tiêu chí error logging)
+    void logError('popup:react', error);
   }
 
   handleReset = () => {

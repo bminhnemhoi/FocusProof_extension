@@ -158,6 +158,23 @@ export default function CameraModal({ onConfirm, onSkip }: CameraModalProps) {
                   </div>
                 )}
               </div>
+
+              {/* Quyền đã bị chặn — "Thử lại" vô ích, hướng dẫn mở lại quyền từng bước */}
+              {cameraState === 'denied' && (
+                <div className="perm-guide">
+                  <p className="perm-guide-title">🔓 Cách mở lại quyền camera:</p>
+                  <ol className="perm-guide-steps">
+                    <li>Bấm icon 🎥 (hoặc 🔒) trên thanh địa chỉ Chrome</li>
+                    <li>Chọn <strong>Site settings</strong> (Cài đặt trang web)</li>
+                    <li>Mục <strong>Camera</strong> → chọn <strong>Allow</strong> (Cho phép)</li>
+                    <li>Quay lại đây và bấm <strong>🔄 Thử lại</strong></li>
+                  </ol>
+                  <p className="perm-guide-note">
+                    Hoặc mở <code>chrome://settings/content/camera</code> và bỏ FocusProof
+                    khỏi danh sách bị chặn.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="modal-actions">
               {cameraState === 'active' && (

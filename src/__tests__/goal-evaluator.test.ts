@@ -80,6 +80,31 @@ describe('isGoalCompliant', () => {
     expect(isGoalCompliant('coursera.org', config)).toBe(true);
     expect(isGoalCompliant('github.com', config)).toBe(false);
   });
+
+  it('should match subdomains of allowed domains', () => {
+    // study mode có notion.so → www.notion.so là subdomain hợp lệ
+    expect(isGoalCompliant('www.notion.so', baseConfig)).toBe(true);
+  });
+
+  it('should NOT be bypassable by lookalike domains (regression: substring match)', () => {
+    // Matcher cũ dùng substring 2 chiều → các domain giả sau đây từng PASS
+    expect(isGoalCompliant('fake-notion.so.evil.com', baseConfig)).toBe(false);
+    expect(isGoalCompliant('notion.so.attacker.net', baseConfig)).toBe(false);
+    expect(isGoalCompliant('mydocs.google.com.phish.io', baseConfig)).toBe(false);
+    // Chiều ngược lại: allowed chứa hostname ngắn → 'e.com' từng match 'evernote.com'
+    expect(isGoalCompliant('e.com', baseConfig)).toBe(false);
+    expect(isGoalCompliant('google.com', baseConfig)).toBe(false); // chỉ docs/drive được phép
+  });
+
+  it('should normalize full URLs entered as custom domains', () => {
+    const config: GoalConfig = {
+      mode: 'study',
+      customAllowedDomains: ['https://myuni.edu.vn/lms'],
+      customExternalRule: null,
+    };
+    expect(isGoalCompliant('myuni.edu.vn', config)).toBe(true);
+    expect(isGoalCompliant('portal.myuni.edu.vn', config)).toBe(true);
+  });
 });
 
 describe('isDomainAllowed', () => {

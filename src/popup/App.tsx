@@ -7,6 +7,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { SessionConfig, SessionData, SessionStatus } from '@/utils/types';
+import ConsentScreen from './components/ConsentScreen';
+import { readConsent } from '@/utils/consent';
 import StartScreen from './components/StartScreen';
 import CameraModal from './components/CameraModal';
 import RunningScreen from './components/RunningScreen';
@@ -14,7 +16,7 @@ import ResultScreen from './components/ResultScreen';
 import HistoryScreen from './components/HistoryScreen';
 import DiagnosticDashboard from './components/DiagnosticDashboard';
 
-type Screen = 'start' | 'camera-modal' | 'running' | 'result' | 'history' | 'diagnostic';
+type Screen = 'consent' | 'start' | 'camera-modal' | 'running' | 'result' | 'history' | 'diagnostic';
 type Theme = 'light' | 'dark' | 'system';
 
 export default function App() {
@@ -23,6 +25,10 @@ export default function App() {
   const [lastResult, setLastResult] = useState<SessionData | null>(null);
   const [theme, setTheme] = useState<Theme>('system');
   const [starting, setStarting] = useState(false);
+  // Chưa render screen nào cho tới khi biết trạng thái phiên + consent (tránh nháy màn hình)
+  const [ready, setReady] = useState(false);
+  // Lỗi khi START_SESSION thất bại — hiển thị banner ở StartScreen
+  const [startError, setStartError] = useState<string | null>(null);
 
   // Apply theme to document root
   useEffect(() => {
@@ -47,13 +53,22 @@ export default function App() {
       { type: 'SESSION_STATUS', payload: null },
       (response: { status?: SessionStatus; lastResult?: SessionData }) => {
         if (response?.status === 'running') {
+          // Phiên đang chạy → vào thẳng running, không bắt consent lại
           setScreen('running');
+          setReady(true);
         } else if (response?.lastResult) {
           // Session finished while popup was closed — show result
           setLastResult(response.lastResult);
           setScreen('result');
+          setReady(true);
           // Clear so next open doesn't show stale result
           chrome.runtime.sendMessage({ type: 'CLEAR_LAST_RESULT', payload: null });
+        } else {
+          // Không có phiên khôi phục → yêu cầu consent lần đầu (CWS user-data policy)
+          readConsent().then((consent) => {
+            setScreen(consent?.given ? 'start' : 'consent');
+            setReady(true);
+          });
         }
       },
     );
@@ -61,6 +76,7 @@ export default function App() {
 
   /** User clicked "Bắt đầu" in StartScreen */
   function handleStartRequest(config: SessionConfig) {
+    setStartError(null);
     setPendingConfig(config);
     if (config.cameraEnabled) {
       setScreen('camera-modal');
@@ -86,9 +102,12 @@ export default function App() {
   /** Send START_SESSION to background */
   function doStartSession(config: SessionConfig) {
     setStarting(true);
+    setStartError(null);
     chrome.runtime.sendMessage(
       { type: 'START_SESSION', payload: config },
       (response: { success?: boolean; error?: string }) => {
+        // Phải đọc lastError ngay trong callback (đồng bộ)
+        const runtimeError = chrome.runtime.lastError?.message;
         setStarting(false);
         if (response?.success) {
           setScreen('running');
@@ -100,6 +119,13 @@ export default function App() {
               if (status?.status === 'running') {
                 setScreen('running');
               } else {
+                // Không nuốt lỗi: hiển thị banner ở StartScreen
+                const detail = response?.error || runtimeError;
+                setStartError(
+                  detail
+                    ? `Không thể bắt đầu phiên: ${detail}`
+                    : 'Không thể bắt đầu phiên. Vui lòng thử lại — nếu vẫn lỗi, hãy tải lại extension tại chrome://extensions.',
+                );
                 setScreen('start');
               }
             },
@@ -151,10 +177,18 @@ export default function App() {
       </header>
 
       <main className="app-main" role="main" aria-live="polite">
-        {screen === 'start' && (
+        {!ready && <p className="loading-text">Đang tải...</p>}
+
+        {ready && screen === 'consent' && (
+          <ConsentScreen onConsent={() => setScreen('start')} />
+        )}
+
+        {ready && screen === 'start' && (
           <StartScreen
             onStart={handleStartRequest}
             onHistory={() => setScreen('history')}
+            startError={startError}
+            onDismissError={() => setStartError(null)}
           />
         )}
 

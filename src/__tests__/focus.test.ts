@@ -11,8 +11,9 @@ import {
   calculateSampleScore,
   calculateFinalScore,
   getGrade,
+  computeSessionStats,
 } from '@/utils/focus';
-import type { FaceResult, ActivityResult, Sample } from '@/utils/types';
+import type { FaceResult, ActivityResult, Sample, SessionData, AlertEvent } from '@/utils/types';
 
 describe('normalizeFace', () => {
   it('should return 0 when face not detected', () => {
@@ -140,6 +141,47 @@ describe('getGrade', () => {
   it('should return F for score < 40', () => {
     expect(getGrade(39).grade).toBe('F');
     expect(getGrade(0).grade).toBe('F');
+  });
+});
+
+describe('computeSessionStats – alertCount (regression: hard-coded 0 bug)', () => {
+  function makeSession(alerts?: AlertEvent[]): SessionData {
+    return {
+      id: 'fp_stats_test',
+      config: {
+        taskName: 'Test',
+        mode: 'study',
+        allowedDomains: ['docs.google.com'],
+        allowExternalApps: true,
+        strictMode: false,
+        durationMinutes: 25,
+        cameraEnabled: false,
+      },
+      status: 'finished',
+      startTime: 1_000_000,
+      endTime: 1_000_000 + 60_000,
+      samples: [makeSample(0.8), makeSample(0.6)],
+      alerts,
+      badges: [],
+      finalScore: 70,
+    };
+  }
+
+  it('should count real alerts recorded on the session', () => {
+    const alerts: AlertEvent[] = [
+      { type: 'idle', timestamp: 1, message: 'idle' },
+      { type: 'tab-violation', timestamp: 2, message: 'tab' },
+      { type: 'face-lost', timestamp: 3, message: 'face' },
+    ];
+    expect(computeSessionStats(makeSession(alerts)).alertCount).toBe(3);
+  });
+
+  it('should report 0 when the session had no alerts', () => {
+    expect(computeSessionStats(makeSession([])).alertCount).toBe(0);
+  });
+
+  it('should not crash for legacy sessions without an alerts field', () => {
+    expect(computeSessionStats(makeSession(undefined)).alertCount).toBe(0);
   });
 });
 

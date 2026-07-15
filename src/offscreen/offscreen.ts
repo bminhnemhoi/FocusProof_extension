@@ -15,6 +15,11 @@
 
 import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision';
 import type { ChromeMessage, FaceResult } from '@/utils/types';
+import { installGlobalErrorHandlers, logError } from '@/utils/analytics';
+
+// Bắt lỗi runtime toàn cục của offscreen document (vùng mù trước đây).
+// chrome.storage.local có sẵn trong offscreen context → analytics hoạt động.
+installGlobalErrorHandlers('offscreen');
 
 // ============================================================
 // State
@@ -34,6 +39,7 @@ async function initCamera(): Promise<{ success: boolean; error?: string }> {
     videoElement = document.getElementById('camera-feed') as HTMLVideoElement;
     if (!videoElement) {
       console.error('[Offscreen] Video element not found');
+      void logError('offscreen:init_camera', 'NO_VIDEO_ELEMENT');
       return { success: false, error: 'NO_VIDEO_ELEMENT' };
     }
 
@@ -96,6 +102,7 @@ async function initCamera(): Promise<{ success: boolean; error?: string }> {
       ? `${err.name}: ${err.message}`
       : err instanceof Error ? err.message : String(err);
     console.error('[Offscreen] Init failed:', message);
+    void logError('offscreen:init_camera', err);
 
     // Cleanup partial resources
     if (mediaStream) {
@@ -141,6 +148,7 @@ function detectFace(): FaceResult {
     return { detected: false, confidence: 0 };
   } catch (err) {
     console.error('[Offscreen] Detection error:', err);
+    void logError('offscreen:detect_face', err);
     return { detected: false, confidence: 0 };
   }
 }

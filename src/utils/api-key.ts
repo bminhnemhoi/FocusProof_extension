@@ -1,12 +1,17 @@
 /**
- * FocusProof – API Key Obfuscation
- * XOR-based obfuscation cho API key (theo y_tuong.md: privacy-first).
- * KHÔNG hardcode secret trực tiếp trong source code.
+ * FocusProof – AI Credentials & Endpoint Configuration
  *
- * Luồng:
- * 1. Build time: Vite inject VITE_OPENAI_API_KEY từ .env
- * 2. Runtime: key được XOR-obfuscate trong memory
- * 3. Chỉ decode khi cần gọi API (opt-in)
+ * ⚠️ LƯU Ý BẢO MẬT (trung thực):
+ * XOR + base64 dưới đây CHỈ là "che mắt" (obfuscation), KHÔNG phải mã hóa.
+ * Bất kỳ ai cũng có thể đảo ngược. Vì vậy KHÔNG được nhúng OpenAI key thật
+ * vào bản build phát hành — key sẽ lộ trong bundle.
+ *
+ * Kiến trúc khuyến nghị (an toàn):
+ *   Extension  →  Backend proxy (giữ key)  →  OpenAI
+ * Đặt VITE_AI_PROXY_URL trỏ tới backend; client không cần biết key.
+ *
+ * Đường dùng key trực tiếp (VITE_OPENAI_API_KEY) chỉ dành cho phát triển/demo
+ * cục bộ và được ưu tiên THẤP hơn proxy.
  */
 
 const XOR_KEY = 'FocusProof2026';
@@ -43,4 +48,19 @@ const OBFUSCATED = RAW_KEY ? obfuscateKey(RAW_KEY) : null;
 export function getApiKey(): string | null {
   if (!OBFUSCATED) return null;
   return deobfuscateKey(OBFUSCATED);
+}
+
+/**
+ * URL backend proxy để gọi AI mà KHÔNG lộ key ở client (khuyến nghị).
+ * Cấu hình qua VITE_AI_PROXY_URL, ví dụ: https://api.focusproof.com/ai-analyze
+ * Trả về null nếu chưa cấu hình.
+ */
+export function getAIProxyUrl(): string | null {
+  const url = (import.meta.env.VITE_AI_PROXY_URL as string | undefined)?.trim();
+  return url ? url : null;
+}
+
+/** Có cấu hình AI remote (proxy hoặc key) hay không. */
+export function isRemoteAIConfigured(): boolean {
+  return getAIProxyUrl() !== null || getApiKey() !== null;
 }

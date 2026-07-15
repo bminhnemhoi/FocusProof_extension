@@ -12,6 +12,7 @@ import { getGrade } from '@/utils/focus';
 import { isGoalCompliant } from '@/utils/goal-evaluator';
 import { startVoiceNote, isSpeechRecognitionSupported } from '@/utils/voice-note';
 import { BADGE_DEFINITIONS } from '@/utils/gamification';
+import { track } from '@/utils/analytics';
 import type { VoiceNoteResult } from '@/utils/voice-note';
 
 /** Map badge ID → tên tiếng Việt */
@@ -35,6 +36,7 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
   const totalSamples = session.samples.length;
   const compliantSamples = session.samples.filter((s) => s.goalCompliant).length;
   const complianceRate = totalSamples > 0 ? Math.round((compliantSamples / totalSamples) * 100) : 0;
+  const alertCount = session.alerts?.length ?? 0;
 
   // Top domains
   const domainMap = new Map<string, number>();
@@ -55,6 +57,8 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
   const [aiResult, setAiResult] = useState<AIAnalysisResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [aiNote, setAiNote] = useState('');
+  const [aiSource, setAiSource] = useState<'gpt' | 'local' | null>(null);
   const [aiTrendMode, setAiTrendMode] = useState(false);
 
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -62,34 +66,59 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
   const [voiceError, setVoiceError] = useState('');
   const voiceStopRef = useRef<(() => void) | null>(null);
 
+  // Popover giải thích công thức tính điểm
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
+
+  // Hint chia sẻ (thay alert native), tự ẩn sau 3s
+  const [shareHint, setShareHint] = useState('');
+  const shareHintTimerRef = useRef<number | null>(null);
+  const showShareHint = useCallback((msg: string) => {
+    setShareHint(msg);
+    if (shareHintTimerRef.current !== null) window.clearTimeout(shareHintTimerRef.current);
+    shareHintTimerRef.current = window.setTimeout(() => {
+      setShareHint('');
+      shareHintTimerRef.current = null;
+    }, 3000);
+  }, []);
+
   /** Xuất chứng chỉ PDF */
   const handleDownloadPDF = useCallback(async () => {
     setPdfLoading(true);
     setPdfError('');
     try {
       const { downloadCertificate } = await import('@/utils/certificate');
-      await downloadCertificate(session, aiResult ?? undefined);
+      // Truyền nguồn phân tích để footer PDF ghi trung thực (GPT / offline)
+      await downloadCertificate(session, aiResult ?? undefined, aiSource ?? undefined);
+      void track('pdf_exported', { withAI: !!aiResult });
     } catch (err: unknown) {
       setPdfError(err instanceof Error ? err.message : 'Lỗi tạo PDF');
+      const { logError } = await import('@/utils/analytics');
+      void logError('popup:pdf_export', err);
     } finally {
       setPdfLoading(false);
     }
-  }, [session, aiResult]);
+  }, [session, aiResult, aiSource]);
 
   /** Phân tích AI (single hoặc trend) */
   const handleAIAnalysis = useCallback(async (includeTrend = false) => {
     setAiLoading(true);
     setAiError('');
+    setAiNote('');
     setAiTrendMode(includeTrend);
     try {
-      const { analyzeSession } = await import('@/utils/ai-analysis');
-      const result = await analyzeSession(
+      // analyzeSessionSmart LUÔN trả kết quả: GPT nếu cấu hình được, ngược
+      // lại tự động dùng engine offline → demo không bao giờ báo lỗi.
+      const { analyzeSessionSmart } = await import('@/utils/ai-analysis');
+      const { result, source, note } = await analyzeSessionSmart(
         session,
         undefined,
         voiceText || undefined,
         includeTrend ? { includeTrend: true } : undefined,
       );
       setAiResult(result);
+      setAiSource(source);
+      if (note) setAiNote(note);
+      void track('ai_analysis', { source, trend: includeTrend });
     } catch (err: unknown) {
       setAiError(err instanceof Error ? err.message : 'Lỗi phân tích AI');
     } finally {
@@ -112,6 +141,8 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
 
     const { promise, stop } = startVoiceNote();
     voiceStopRef.current = stop;
+    // Bắt đầu ghi âm thành công → ghi nhận sự kiện
+    void track('voice_note');
 
     promise
       .then((result: VoiceNoteResult) => {
@@ -137,9 +168,28 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
           <span className="result-score-value">{Math.round(score)}</span>
           <span className="result-score-unit">/100</span>
         </div>
-        <span className="result-grade" style={{ color: gradeInfo.color }}>
-          {gradeInfo.grade} – {gradeInfo.label}
-        </span>
+        <div className="result-grade-row">
+          <span className="result-grade" style={{ color: gradeInfo.color }}>
+            {gradeInfo.grade} – {gradeInfo.label}
+          </span>
+          <button
+            className="score-info-btn"
+            type="button"
+            aria-label="Giải thích cách tính điểm"
+            aria-expanded={showScoreInfo}
+            onClick={() => setShowScoreInfo((v) => !v)}
+          >
+            ?
+          </button>
+        </div>
+        {showScoreInfo && (
+          <div className="score-info-popover" role="note">
+            <p className="score-info-title">Cách tính điểm</p>
+            <p>Camera bật: Khuôn mặt 40% + Hoạt động 35% + Tab 25%</p>
+            <p>Camera tắt: Hoạt động 60% + Tab 40%</p>
+            <p>Xếp hạng: S ≥95 · A ≥85 · B ≥70 · C ≥55 · D ≥40 · F &lt;40</p>
+          </div>
+        )}
       </div>
 
       {/* Session Info */}
@@ -164,6 +214,12 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
           <span className="result-stat-label">Camera</span>
           <span className="result-stat-value">
             {session.config.cameraEnabled ? 'Bật' : 'Tắt'}
+          </span>
+        </div>
+        <div className="result-stat-row">
+          <span className="result-stat-label">Số cảnh báo</span>
+          <span className={`result-stat-value${alertCount > 0 ? ' result-stat-value--warning' : ''}`}>
+            {alertCount}
           </span>
         </div>
         {session.config.strictMode && (
@@ -412,8 +468,14 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
           </button>
         </div>
         {aiError && <p className="form-hint form-hint--warning">{aiError}</p>}
+        {aiNote && <p className="form-hint">{aiNote}</p>}
         {aiResult && (
           <div className="ai-result-card">
+            {aiSource && (
+              <p className="ai-source-tag">
+                {aiSource === 'gpt' ? '🤖 GPT-4o-mini' : '⚙️ Phân tích offline'}
+              </p>
+            )}
             <div className="ai-summary">
               <p className="ai-summary-vi">{aiResult.summaryVi}</p>
               <p className="ai-summary-en">{aiResult.summaryEn}</p>
@@ -459,7 +521,14 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
             className="btn btn-share btn-share--facebook"
             onClick={() => {
               const text = `🎯 FocusProof: Tôi đạt ${Math.round(score)}/100 điểm tập trung trong phiên "${session.config.taskName}"! #FocusProof`;
-              window.open(`https://www.facebook.com/sharer/sharer.php?quote=${encodeURIComponent(text)}`, '_blank', 'width=600,height=400');
+              // sharer.php cần tham số u (URL) mới hoạt động
+              const shareUrl = encodeURIComponent('https://focusproof.com');
+              window.open(
+                `https://www.facebook.com/sharer/sharer.php?u=${shareUrl}&quote=${encodeURIComponent(text)}`,
+                '_blank',
+                'width=600,height=400',
+              );
+              void track('certificate_shared', { channel: 'facebook' });
             }}
             type="button"
           >
@@ -469,15 +538,26 @@ export default function ResultScreen({ session, onNewSession, onHistory }: Resul
             className="btn btn-share btn-share--tiktok"
             onClick={() => {
               const text = `🎯 FocusProof: ${Math.round(score)}/100 điểm tập trung! "${session.config.taskName}" #FocusProof #TapTrung`;
-              navigator.clipboard.writeText(text).then(() => {
-                alert('Đã copy nội dung! Paste vào TikTok để chia sẻ.');
-              });
+              navigator.clipboard
+                .writeText(text)
+                .then(() => {
+                  showShareHint('✅ Đã copy nội dung! Paste vào TikTok để chia sẻ.');
+                  void track('certificate_shared', { channel: 'tiktok' });
+                })
+                .catch(() => {
+                  showShareHint('⚠️ Không thể copy tự động, vui lòng thử lại.');
+                });
             }}
             type="button"
           >
             🎵 TikTok
           </button>
         </div>
+        {shareHint && (
+          <p className="share-hint" role="status">
+            {shareHint}
+          </p>
+        )}
       </div>
 
       {/* Actions */}

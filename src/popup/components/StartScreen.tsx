@@ -6,13 +6,30 @@
  * Reference: y_tuong.md Section 2.2 – Smart Task & Goal System
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { SessionConfig, SessionMode } from '@/utils/types';
 import { DEFAULT_GOAL_DOMAIN_RULES } from '@/utils/types';
+import { readConsent } from '@/utils/consent';
 
 interface StartScreenProps {
   onStart: (config: SessionConfig) => void;
   onHistory: () => void;
+  /** Lỗi khởi tạo phiên từ App (START_SESSION thất bại) — hiển thị banner */
+  startError?: string | null;
+  onDismissError?: () => void;
+}
+
+/** Key lưu cấu hình phiên gần nhất trong chrome.storage.local */
+const LAST_CONFIG_KEY = 'fp_last_config';
+
+/** Cấu hình được ghi nhớ giữa các phiên (không gồm taskName) */
+interface LastConfig {
+  mode: SessionMode;
+  durationMinutes: number;
+  cameraEnabled: boolean;
+  strictMode: boolean;
+  allowExternalApps: boolean;
+  allowedDomains: string[];
 }
 
 /** Task presets theo y_tuong.md */
@@ -30,7 +47,7 @@ const MODE_PRESETS: Array<{
 
 const DURATION_OPTIONS = [3, 15, 25, 45, 60, 90, 120];
 
-export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
+export default function StartScreen({ onStart, onHistory, startError, onDismissError }: StartScreenProps) {
   const [taskName, setTaskName] = useState('');
   const [mode, setMode] = useState<SessionMode>('study');
   const [customDomains, setCustomDomains] = useState('');
@@ -42,11 +59,56 @@ export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
 
   const defaultDomains = DEFAULT_GOAL_DOMAIN_RULES[mode];
 
-  function handleStart() {
+  // Khôi phục cấu hình phiên gần nhất (fp_last_config) khi mở màn hình
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await chrome.storage.local.get(LAST_CONFIG_KEY);
+        const saved = res[LAST_CONFIG_KEY] as Partial<LastConfig> | undefined;
+        if (!saved || cancelled) return;
+
+        const validMode = MODE_PRESETS.some((p) => p.mode === saved.mode);
+        if (validMode && saved.mode) setMode(saved.mode);
+        if (typeof saved.durationMinutes === 'number' && DURATION_OPTIONS.includes(saved.durationMinutes)) {
+          setDurationMinutes(saved.durationMinutes);
+        }
+        if (typeof saved.cameraEnabled === 'boolean') setCameraEnabled(saved.cameraEnabled);
+        if (typeof saved.strictMode === 'boolean') setStrictMode(saved.strictMode);
+        if (typeof saved.allowExternalApps === 'boolean') setAllowExternalApps(saved.allowExternalApps);
+
+        // Suy ra domain bổ sung = allowedDomains đã lưu trừ đi domain mặc định của mode
+        let hasCustom = false;
+        if (validMode && saved.mode && Array.isArray(saved.allowedDomains)) {
+          const defaults = DEFAULT_GOAL_DOMAIN_RULES[saved.mode];
+          const custom = saved.allowedDomains.filter(
+            (d) => typeof d === 'string' && !defaults.includes(d),
+          );
+          if (custom.length > 0) {
+            setCustomDomains(custom.join(', '));
+            hasCustom = true;
+          }
+        }
+
+        // Có tùy chỉnh nâng cao → mở sẵn để user thấy
+        if (hasCustom || saved.strictMode === true || saved.allowExternalApps === false) {
+          setShowAdvanced(true);
+        }
+      } catch {
+        // Storage lỗi → dùng giá trị mặc định
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleStart() {
     const parsedCustom = customDomains
       .split(',')
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean);
+
+    // Đọc consent để gắn cờ opt-in thu 500 ký tự gõ cuối (CWS user-data policy)
+    const consent = await readConsent();
 
     const config: SessionConfig = {
       taskName: taskName.trim() || `Phiên ${MODE_PRESETS.find((p) => p.mode === mode)?.label}`,
@@ -56,13 +118,47 @@ export default function StartScreen({ onStart, onHistory }: StartScreenProps) {
       strictMode,
       durationMinutes,
       cameraEnabled,
+      captureTypedContent: consent?.captureTyped === true,
     };
+
+    // Ghi nhớ cấu hình cho lần sau (không lưu taskName)
+    const lastConfig: LastConfig = {
+      mode,
+      durationMinutes,
+      cameraEnabled,
+      strictMode,
+      allowExternalApps,
+      allowedDomains: config.allowedDomains,
+    };
+    try {
+      await chrome.storage.local.set({ [LAST_CONFIG_KEY]: lastConfig });
+    } catch {
+      // Không chặn việc bắt đầu phiên nếu lưu cấu hình lỗi
+    }
 
     onStart(config);
   }
 
   return (
     <div className="start-screen">
+      {/* Banner lỗi khởi tạo phiên */}
+      {startError && (
+        <div className="error-banner" role="alert">
+          <span className="error-banner-icon" aria-hidden="true">⚠️</span>
+          <p className="error-banner-text">{startError}</p>
+          {onDismissError && (
+            <button
+              className="error-banner-close"
+              onClick={onDismissError}
+              type="button"
+              aria-label="Đóng thông báo lỗi"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="screen-subtitle">Bắt đầu phiên tập trung</p>
 
       {/* Task Name */}

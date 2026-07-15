@@ -50,6 +50,12 @@ export interface SessionConfig {
   strictMode: boolean; // Chỉ cho phép 1 tab duy nhất
   durationMinutes: number;
   cameraEnabled: boolean;
+  /**
+   * Opt-in cho phép thu 500 ký tự gõ cuối để gửi AI phân tích ngữ cảnh.
+   * Mặc định (undefined/false) KHÔNG thu — yêu cầu user-data policy của
+   * Chrome Web Store: thu nội dung trang phải có consent rõ ràng.
+   */
+  captureTypedContent?: boolean;
 }
 
 /** Metadata phiên hoàn chỉnh */
@@ -60,8 +66,15 @@ export interface SessionData {
   startTime: number; // timestamp ms
   endTime?: number;
   samples: Sample[];
+  /**
+   * Lịch sử cảnh báo thực tế phát sinh trong phiên (face-lost, idle,
+   * tab-violation, outside-chrome). Được ghi realtime trong sampling loop
+   * để thống kê cuối phiên + AI phản ánh đúng số cảnh báo.
+   * Optional để tương thích ngược với phiên đã lưu trước bản cập nhật này.
+   */
+  alerts?: AlertEvent[];
   finalScore?: number;
-  hash?: string; // SHA-256
+  hash?: string; // SHA-256 integrity fingerprint (xem certificate.ts)
   badges: string[];
 }
 

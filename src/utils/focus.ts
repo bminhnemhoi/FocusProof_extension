@@ -10,7 +10,7 @@
  */
 
 import type { FaceResult, ActivityResult, Sample, SessionData } from './types';
-import { WEIGHTS_CAMERA_ON, WEIGHTS_CAMERA_OFF } from './types';
+import { WEIGHTS_CAMERA_ON, WEIGHTS_CAMERA_OFF, OUTSIDE_CHROME_MARKER } from './types';
 
 // ============================================================
 // Activity Normalization Thresholds (per 6-second window)
@@ -158,6 +158,11 @@ export function computeSessionStats(session: SessionData): SessionStats {
   const { samples } = session;
   const totalSamples = samples.length;
 
+  // Số cảnh báo thực tế đã ghi trong phiên (face-lost, idle, tab-violation,
+  // outside-chrome). Trước đây bị gán cứng = 0 → báo cáo & AI luôn nói
+  // "không có cảnh báo". Nay đọc trực tiếp từ session.alerts.
+  const alertCount = session.alerts?.length ?? 0;
+
   if (totalSamples === 0) {
     return {
       totalSamples: 0,
@@ -165,7 +170,7 @@ export function computeSessionStats(session: SessionData): SessionStats {
       avgFaceConfidence: 0,
       avgActivityScore: 0,
       tabComplianceRate: 0,
-      alertCount: 0,
+      alertCount,
       topDomains: [],
     };
   }
@@ -187,11 +192,12 @@ export function computeSessionStats(session: SessionData): SessionStats {
   const compliantCount = samples.filter((s) => s.goalCompliant).length;
   const tabComplianceRate = compliantCount / totalSamples;
 
-  // Top domains (đếm tần suất)
+  // Top domains (đếm tần suất) — loại marker kỹ thuật __outside_chrome__
+  // để nó không xuất hiện như một "domain" trong chứng chỉ/AI/thống kê
   const domainMap = new Map<string, number>();
   for (const s of samples) {
     const domain = s.tab.currentDomain || s.tab.currentUrl;
-    if (domain) {
+    if (domain && domain !== OUTSIDE_CHROME_MARKER) {
       domainMap.set(domain, (domainMap.get(domain) ?? 0) + 1);
     }
   }
@@ -206,7 +212,7 @@ export function computeSessionStats(session: SessionData): SessionStats {
     avgFaceConfidence: Math.round(avgFaceConfidence * 100) / 100,
     avgActivityScore: Math.round(avgActivityScore * 100) / 100,
     tabComplianceRate: Math.round(tabComplianceRate * 100) / 100,
-    alertCount: 0, // Sẽ được tính từ alert-system trong Phase 1
+    alertCount,
     topDomains,
   };
 }

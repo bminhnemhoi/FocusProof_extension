@@ -10,13 +10,16 @@
  *          focus pattern, signal breakdown.
  *
  * Font: Roboto (embedded TTF, hỗ trợ Vietnamese/Unicode).
- * Watermark: "FocusProof Certified • SHA-256 Verified"
+ * Watermark: "FocusProof" + "SHA-256 Integrity" — dấu vân tay toàn vẹn
+ * SHA-256 (không phải chữ ký số). Footer trang 2 ghi đúng nguồn phân tích
+ * (GPT-4o-mini hoặc engine offline) theo tham số analysisSource.
  *
  * Reference: y_tuong.md Section 2.3 – Chứng chỉ PDF 2 trang
  */
 
 import { jsPDF } from 'jspdf';
 import type { CertificateData, AIAnalysisResult, SessionData } from './types';
+import type { AnalysisSource } from './ai-analysis';
 import { getGrade } from './focus';
 import { computeSessionStats } from './focus';
 import { generateQRDataUrl } from './qr-code';
@@ -137,11 +140,12 @@ function drawWatermark(doc: jsPDF, font: string) {
 
   // Fallback: vẽ text trực tiếp với opacity thấp (jsPDF basic)
   doc.setGState(doc.GState({ opacity: 0.08 }));
-  doc.text('FocusProof Certified', PAGE_W / 2, PAGE_H / 2 - 10, {
+  doc.text('FocusProof', PAGE_W / 2, PAGE_H / 2 - 10, {
     align: 'center',
     angle: 30,
   });
-  doc.text('SHA-256 Verified', PAGE_W / 2, PAGE_H / 2 + 15, {
+  // Trung thực: đây là dấu vân tay toàn vẹn SHA-256, không phải chữ ký số.
+  doc.text('SHA-256 Integrity', PAGE_W / 2, PAGE_H / 2 + 15, {
     align: 'center',
     angle: 30,
   });
@@ -370,7 +374,12 @@ function renderPage1(doc: jsPDF, data: CertificateData, font: string) {
 // Page 2: AI Analysis
 // ============================================================
 
-function renderPage2(doc: jsPDF, data: CertificateData, font: string) {
+function renderPage2(
+  doc: jsPDF,
+  data: CertificateData,
+  font: string,
+  analysisSource?: AnalysisSource,
+) {
   const { session, aiAnalysis } = data;
 
   // ── Header bar ──
@@ -467,11 +476,13 @@ function renderPage2(doc: jsPDF, data: CertificateData, font: string) {
   doc.setFont(font, 'italic');
   doc.setFontSize(7);
   doc.setTextColor(...TEXT_SECONDARY);
-  doc.text(
-    'Analysis powered by GPT-4o-mini. Results are for reference only.',
-    MARGIN,
-    PAGE_H - 10,
-  );
+  // Trung thực: chỉ ghi nhãn GPT khi phân tích thực sự chạy bằng GPT.
+  const footerText = !aiAnalysis
+    ? 'Results are for reference only.'
+    : analysisSource === 'gpt'
+      ? 'Analysis powered by GPT-4o-mini. Results are for reference only.'
+      : 'Analysis by FocusProof offline engine. Results are for reference only.';
+  doc.text(footerText, MARGIN, PAGE_H - 10);
 }
 
 // ============================================================
@@ -483,11 +494,13 @@ function renderPage2(doc: jsPDF, data: CertificateData, font: string) {
  *
  * @param session - Phiên đã hoàn thành
  * @param aiAnalysis - Kết quả phân tích AI (optional)
+ * @param analysisSource - Nguồn phân tích ('gpt' | 'local') để footer ghi trung thực
  * @returns PDF Blob, sẵn sàng download
  */
 export async function generateCertificatePDF(
   session: SessionData,
   aiAnalysis?: AIAnalysisResult,
+  analysisSource?: AnalysisSource,
 ): Promise<Blob> {
   // Generate QR code
   const qrDataUrl = await generateQRDataUrl(session);
@@ -514,7 +527,7 @@ export async function generateCertificatePDF(
 
   // Page 2: AI Analysis
   doc.addPage('a4', 'landscape');
-  renderPage2(doc, certData, font);
+  renderPage2(doc, certData, font, analysisSource);
 
   return doc.output('blob');
 }
@@ -525,8 +538,9 @@ export async function generateCertificatePDF(
 export async function downloadCertificate(
   session: SessionData,
   aiAnalysis?: AIAnalysisResult,
+  analysisSource?: AnalysisSource,
 ): Promise<void> {
-  const blob = await generateCertificatePDF(session, aiAnalysis);
+  const blob = await generateCertificatePDF(session, aiAnalysis, analysisSource);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

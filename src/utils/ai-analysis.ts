@@ -9,7 +9,8 @@
 
 import type { AIAnalysisInput, AIAnalysisResult, SessionData } from './types';
 import { computeSessionStats } from './focus';
-import { getApiKey } from './api-key';
+import { getApiKey, getAIProxyUrl, isRemoteAIConfigured } from './api-key';
+import { generateLocalAnalysis } from './local-analysis';
 import { getSessionHistory } from './storage';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -181,9 +182,11 @@ export async function analyzeSession(
   voiceNoteText?: string,
   options?: { includeTrend?: boolean },
 ): Promise<AIAnalysisResult> {
+  // Ưu tiên backend proxy (giữ key server-side, an toàn); fallback key trực tiếp.
+  const proxyUrl = getAIProxyUrl();
   const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('API key chưa được cấu hình. Kiểm tra VITE_OPENAI_API_KEY trong .env');
+  if (!proxyUrl && !apiKey) {
+    throw new Error('AI remote chưa được cấu hình (thiếu VITE_AI_PROXY_URL hoặc VITE_OPENAI_API_KEY).');
   }
 
   const input = buildAnalysisInput(session, typedContent, voiceNoteText);
@@ -197,14 +200,17 @@ export async function analyzeSession(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
+  // Endpoint: proxy nếu có (không gắn Authorization — backend tự thêm key),
+  // ngược lại gọi thẳng OpenAI kèm Bearer key (chỉ cho dev/demo cục bộ).
+  const endpoint = proxyUrl ?? OPENAI_API_URL;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!proxyUrl && apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
   let response: Response;
   try {
-    response = await fetch(OPENAI_API_URL, {
+    response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: MODEL,
         messages,
@@ -232,6 +238,50 @@ export async function analyzeSession(
   const content: string = data?.choices?.[0]?.message?.content ?? '';
 
   return parseAIResponse(content);
+}
+
+/** Nguồn sinh ra kết quả phân tích. */
+export type AnalysisSource = 'gpt' | 'local';
+
+export interface SmartAnalysis {
+  result: AIAnalysisResult;
+  /** 'gpt' = GPT-4o-mini (qua proxy/key); 'local' = engine offline dự phòng. */
+  source: AnalysisSource;
+  /** Ghi chú khi phải fallback (ví dụ mạng lỗi). */
+  note?: string;
+}
+
+/**
+ * Entry point khuyến nghị cho UI: LUÔN trả về kết quả có ý nghĩa.
+ *
+ * - Có cấu hình remote (proxy/key)  → gọi GPT; nếu lỗi mạng thì fallback offline.
+ * - Chưa cấu hình remote            → dùng engine offline ngay.
+ *
+ * Nhờ vậy nút "Phân tích" không bao giờ hiện lỗi "API key chưa cấu hình" khi
+ * demo. UI có thể đọc `source` để hiển thị nhãn "GPT" hoặc "Offline".
+ */
+export async function analyzeSessionSmart(
+  session: SessionData,
+  typedContent?: string,
+  voiceNoteText?: string,
+  options?: { includeTrend?: boolean },
+): Promise<SmartAnalysis> {
+  if (!isRemoteAIConfigured()) {
+    return { result: generateLocalAnalysis(session), source: 'local' };
+  }
+
+  try {
+    const result = await analyzeSession(session, typedContent, voiceNoteText, options);
+    return { result, source: 'gpt' };
+  } catch (err) {
+    // Remote lỗi (mạng, quota, timeout…) → không để demo gãy, dùng offline.
+    const note = err instanceof Error ? err.message : String(err);
+    return {
+      result: generateLocalAnalysis(session),
+      source: 'local',
+      note: `Không gọi được AI nâng cao (${note}). Đang hiển thị phân tích offline.`,
+    };
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "focusproof",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chứng chỉ Tập trung Thông minh & Xác thực - Chrome Extension",
   "private": true,
   "type": "module",
@@ -13,6 +13,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,html}\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check:secrets": "node scripts/check-no-secrets.mjs dist",
+    "package": "node scripts/package.mjs",
     "postinstall": "node scripts/copy-mediapipe.mjs",
     "prepare": "husky"
   },

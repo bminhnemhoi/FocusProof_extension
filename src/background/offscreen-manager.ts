@@ -5,6 +5,7 @@
  */
 
 import type { FaceResult } from '@/utils/types';
+import { logError } from '@/utils/analytics';
 
 // ============================================================
 // State
@@ -40,6 +41,7 @@ export async function ensureDocument(): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('[BG] Failed to create offscreen document:', err);
+    void logError('background:offscreen_create', err);
     offscreenCreated = false;
     return false;
   }
@@ -71,6 +73,9 @@ export async function initCamera(): Promise<boolean> {
   const MAX_RETRIES = 3;
   const DELAYS = [200, 600, 1500]; // ms — shorter since permission is pre-granted in popup
 
+  // Lỗi cuối cùng ghi nhận — log một lần khi bỏ cuộc để không spam analytics
+  let lastError: unknown = 'unknown';
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     // Wait for offscreen script to load
     await new Promise((r) => setTimeout(r, DELAYS[attempt]));
@@ -88,26 +93,32 @@ export async function initCamera(): Promise<boolean> {
       // Permanent failure — don't retry
       if (response?.error === 'NotAllowedError') {
         console.warn('[BG] Camera permission denied/dismissed — no retry');
+        void logError('background:camera_init', 'NotAllowedError: permission denied/dismissed');
         return false;
       }
       if (response?.error === 'NotFoundError') {
         console.warn('[BG] No camera device found — no retry');
+        void logError('background:camera_init', 'NotFoundError: no camera device');
         return false;
       }
       if (response?.error === 'NO_VIDEO_ELEMENT') {
         console.warn('[BG] Offscreen HTML missing video element — no retry');
+        void logError('background:camera_init', 'NO_VIDEO_ELEMENT: offscreen HTML missing video element');
         return false;
       }
 
       // Other failure — continue to next attempt
+      lastError = `attempt ${attempt + 1} failed: ${response?.error ?? 'unknown'}`;
       console.warn('[BG] Camera init attempt', attempt + 1, 'failed:', response?.error ?? 'unknown');
     } catch (err) {
       // Offscreen may not be ready yet (script still loading), retry
+      lastError = err;
       console.warn('[BG] Camera init attempt', attempt + 1, 'error (offscreen not ready?):', err);
     }
   }
 
   console.warn('[BG] Camera init failed after', MAX_RETRIES, 'attempts — continuing without camera');
+  void logError('background:camera_init', lastError);
   return false;
 }
 

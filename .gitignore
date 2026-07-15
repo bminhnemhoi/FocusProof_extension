@@ -8,9 +8,10 @@ dist/
 .env
 .env.local
 
-# IDE
+# IDE / AI tooling
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 

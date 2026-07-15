@@ -93,6 +93,7 @@ describe('startVoiceNote', () => {
     (window as unknown as Record<string, unknown>).SpeechRecognition = class extends MockSpeechRecognition {
       constructor() {
         super();
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         mockInstance = this;
       }
     };

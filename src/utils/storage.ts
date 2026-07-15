@@ -112,6 +112,149 @@ export async function updateBadges(badges: Record<string, boolean>): Promise<voi
 }
 
 // ============================================================
+// Backup / Restore (sao lưu dữ liệu)
+// ============================================================
+
+/** Phiên bản schema của file sao lưu — tăng khi đổi cấu trúc. */
+const BACKUP_SCHEMA_VERSION = 1;
+
+/** Số phiên tối đa giữ lại sau khi merge (đồng bộ với addToHistory). */
+const MAX_SESSIONS = 100;
+
+/** Cấu trúc file sao lưu JSON. */
+export interface BackupFile {
+  schemaVersion: number;
+  exportedAt: string; // ISO 8601
+  data: {
+    sessionHistory: SessionData[];
+    badges: Record<string, boolean>;
+    fp_analytics_events: unknown[];
+    fp_install_id: string | null;
+  };
+}
+
+/** Kết quả nhập dữ liệu. */
+export interface ImportResult {
+  imported: { sessions: number; badges: number };
+  /** Số phiên hỏng trong file bị bỏ qua. */
+  skipped: number;
+}
+
+/**
+ * Xuất toàn bộ dữ liệu người dùng thành chuỗi JSON có versioning.
+ * KHÔNG gồm currentSession (phiên đang chạy — trạng thái tạm thời).
+ * fp_analytics_events + fp_install_id chỉ để chẩn đoán, không nhập lại.
+ */
+export async function exportAllData(): Promise<string> {
+  const [sessionHistory, badges, analyticsRes] = await Promise.all([
+    getSessionHistory(),
+    getBadges(),
+    chrome.storage.local.get(['fp_analytics_events', 'fp_install_id']),
+  ]);
+
+  const backup: BackupFile = {
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: {
+      sessionHistory,
+      badges,
+      fp_analytics_events: (analyticsRes['fp_analytics_events'] as unknown[] | undefined) ?? [],
+      fp_install_id: (analyticsRes['fp_install_id'] as string | undefined) ?? null,
+    },
+  };
+  return JSON.stringify(backup, null, 2);
+}
+
+/** Kiểm một phần tử sessionHistory trong file sao lưu có hợp lệ không. */
+function isValidSession(s: unknown): s is SessionData {
+  if (typeof s !== 'object' || s === null) return false;
+  const obj = s as Record<string, unknown>;
+  return (
+    typeof obj.id === 'string' && obj.id.length > 0
+    && typeof obj.startTime === 'number' && Number.isFinite(obj.startTime)
+    && Array.isArray(obj.samples)
+  );
+}
+
+/**
+ * Nhập dữ liệu từ file sao lưu JSON (do exportAllData tạo ra).
+ * - Validate chặt: schemaVersion, cấu trúc sessionHistory/badges.
+ * - Phần tử session hỏng bị BỎ QUA (đếm vào `skipped`), không làm fail cả file.
+ * - MERGE với dữ liệu hiện có: session trùng id không nhân đôi, badges OR.
+ * - Sau merge cắt về tối đa 100 phiên gần nhất (theo startTime).
+ * @throws Error message tiếng Việt khi file không hợp lệ.
+ */
+export async function importAllData(json: string): Promise<ImportResult> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('File sao lưu không hợp lệ: nội dung không phải JSON.');
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('File sao lưu không hợp lệ: thiếu cấu trúc dữ liệu.');
+  }
+  const backup = parsed as Partial<BackupFile>;
+
+  if (backup.schemaVersion !== BACKUP_SCHEMA_VERSION) {
+    throw new Error(
+      `File sao lưu không được hỗ trợ (schemaVersion=${String(backup.schemaVersion)}, cần ${BACKUP_SCHEMA_VERSION}).`,
+    );
+  }
+  if (typeof backup.data !== 'object' || backup.data === null) {
+    throw new Error('File sao lưu không hợp lệ: thiếu trường "data".');
+  }
+
+  const rawSessions = (backup.data as { sessionHistory?: unknown }).sessionHistory ?? [];
+  if (!Array.isArray(rawSessions)) {
+    throw new Error('File sao lưu không hợp lệ: "sessionHistory" phải là mảng.');
+  }
+
+  const rawBadges = (backup.data as { badges?: unknown }).badges ?? {};
+  if (typeof rawBadges !== 'object' || rawBadges === null || Array.isArray(rawBadges)) {
+    throw new Error('File sao lưu không hợp lệ: "badges" phải là object {tên: boolean}.');
+  }
+
+  // ── Lọc session hợp lệ, đếm số bỏ qua ──
+  const validSessions: SessionData[] = [];
+  let skipped = 0;
+  for (const s of rawSessions) {
+    if (isValidSession(s)) validSessions.push(s);
+    else skipped++;
+  }
+
+  // ── Merge sessionHistory: trùng id không nhân đôi ──
+  const current = await getSessionHistory();
+  const existingIds = new Set(current.map((s) => s.id));
+  const newSessions = validSessions.filter((s) => !existingIds.has(s.id));
+
+  const merged = [...current, ...newSessions]
+    .sort((a, b) => a.startTime - b.startTime);
+  const pruned = merged.length > MAX_SESSIONS
+    ? merged.slice(merged.length - MAX_SESSIONS)
+    : merged;
+
+  // ── Merge badges: OR (chỉ nhận giá trị boolean) ──
+  const currentBadges = await getBadges();
+  const mergedBadges: Record<string, boolean> = { ...currentBadges };
+  let newBadgeCount = 0;
+  for (const [key, value] of Object.entries(rawBadges as Record<string, unknown>)) {
+    if (typeof value !== 'boolean') continue; // bỏ qua entry không phải boolean
+    if (value && !mergedBadges[key]) newBadgeCount++;
+    mergedBadges[key] = mergedBadges[key] || value;
+  }
+
+  await set('sessionHistory', pruned);
+  await set('badges', mergedBadges);
+
+  return {
+    imported: { sessions: newSessions.length, badges: newBadgeCount },
+    skipped,
+  };
+}
+
+// ============================================================
 // Export namespace
 // ============================================================
 
@@ -130,4 +273,6 @@ export const storage = {
   saveAllowedDomains,
   getBadges,
   updateBadges,
+  exportAllData,
+  importAllData,
 } as const;

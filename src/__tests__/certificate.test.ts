@@ -227,6 +227,53 @@ describe('generateCertificatePDF', () => {
     expect(texts).toContain('Activity');
     expect(texts).toContain('Tab Compliance');
   });
+
+  // ── Footer trung thực theo nguồn phân tích ──
+  describe('page 2 footer (analysis source)', () => {
+    /** Lấy toàn bộ text đã render kể từ khi clear mock */
+    function renderedTexts(): string[] {
+      return mockDocMethods.text.mock.calls
+        .map((c: unknown[]) => c[0])
+        .filter((t): t is string => typeof t === 'string');
+    }
+
+    it('should label footer with GPT-4o-mini when source is gpt', async () => {
+      mockDocMethods.text.mockClear();
+      await generateCertificatePDF(createMockSession(), mockAIResult, 'gpt');
+
+      const texts = renderedTexts();
+      expect(texts.some((t) => t.includes('Analysis powered by GPT-4o-mini'))).toBe(true);
+      expect(texts.some((t) => t.includes('FocusProof offline engine'))).toBe(false);
+    });
+
+    it('should label footer with offline engine when source is local', async () => {
+      mockDocMethods.text.mockClear();
+      await generateCertificatePDF(createMockSession(), mockAIResult, 'local');
+
+      const texts = renderedTexts();
+      expect(texts.some((t) => t.includes('Analysis by FocusProof offline engine'))).toBe(true);
+      expect(texts.some((t) => t.includes('GPT-4o-mini'))).toBe(false);
+    });
+
+    it('should not claim GPT when no AI analysis was performed', async () => {
+      mockDocMethods.text.mockClear();
+      await generateCertificatePDF(createMockSession());
+
+      const texts = renderedTexts();
+      expect(texts.some((t) => t.includes('GPT-4o-mini'))).toBe(false);
+      expect(texts.some((t) => t.includes('Results are for reference only.'))).toBe(true);
+    });
+
+    it('should default to offline label when source is omitted but AI result exists', async () => {
+      mockDocMethods.text.mockClear();
+      await generateCertificatePDF(createMockSession(), mockAIResult);
+
+      const texts = renderedTexts();
+      // Không có nguồn rõ ràng → mặc định trung thực (offline), không nhận vơ GPT
+      expect(texts.some((t) => t.includes('Analysis by FocusProof offline engine'))).toBe(true);
+      expect(texts.some((t) => t.includes('GPT-4o-mini'))).toBe(false);
+    });
+  });
 });
 
 describe('downloadCertificate', () => {

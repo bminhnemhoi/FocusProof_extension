@@ -10,6 +10,7 @@
 import QRCode from 'qrcode';
 import type { SessionData } from './types';
 import { getGrade } from './focus';
+import { buildVerifyUrl } from './certificate-signing';
 
 /** Payload nhúng trong QR code */
 export interface QRPayload {
@@ -44,10 +45,13 @@ export function buildQRPayload(session: SessionData): QRPayload {
  * @returns Data URL string (image/png;base64,...)
  */
 export async function generateQRDataUrl(session: SessionData): Promise<string> {
-  const payload = buildQRPayload(session);
-  const jsonStr = JSON.stringify(payload);
+  // Nếu backend verify đã cấu hình → QR chứa URL xác thực THẬT (người xem đối
+  // chiếu bản ghi gốc trên server). Nếu chưa → giữ payload JSON tự chứng thực
+  // (dấu vân tay toàn vẹn, minh bạch là chưa có xác thực bên thứ ba).
+  const verifyUrl = buildVerifyUrl(session);
+  const content = verifyUrl ?? JSON.stringify(buildQRPayload(session));
 
-  const dataUrl = await QRCode.toDataURL(jsonStr, {
+  const dataUrl = await QRCode.toDataURL(content, {
     width: 200,
     margin: 1,
     color: {

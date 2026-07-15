@@ -130,26 +130,48 @@ describe('generateQRDataUrl', () => {
     expect(result).toBe('data:image/png;base64,MOCK_QR_DATA');
   });
 
-  it('should call QRCode.toDataURL with correct JSON payload', async () => {
-    mockedToDataURL.mockClear();
-    const session = createMockSession();
-    await generateQRDataUrl(session);
+  it('should call QRCode.toDataURL with correct JSON payload (no verify backend)', async () => {
+    // Cô lập khỏi .env thật: không có backend verify → QR chứa JSON tự chứng thực
+    vi.stubEnv('VITE_VERIFY_BASE_URL', '');
+    try {
+      mockedToDataURL.mockClear();
+      const session = createMockSession();
+      await generateQRDataUrl(session);
 
-    expect(mockedToDataURL).toHaveBeenCalledOnce();
-    const [jsonStr, opts] = mockedToDataURL.mock.calls[0];
+      expect(mockedToDataURL).toHaveBeenCalledOnce();
+      const [jsonStr, opts] = mockedToDataURL.mock.calls[0];
 
-    // Verify JSON payload
-    const parsed = JSON.parse(jsonStr as string);
-    expect(parsed.id).toBe('session-qr-test-001');
-    expect(parsed.score).toBe(85);
+      // Verify JSON payload
+      const parsed = JSON.parse(jsonStr as string);
+      expect(parsed.id).toBe('session-qr-test-001');
+      expect(parsed.score).toBe(85);
 
-    // Verify QR options
-    expect(opts).toMatchObject({
-      width: 200,
-      margin: 1,
-      color: { dark: '#1e293b', light: '#ffffff' },
-      errorCorrectionLevel: 'M',
-    });
+      // Verify QR options
+      expect(opts).toMatchObject({
+        width: 200,
+        margin: 1,
+        color: { dark: '#1e293b', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('should embed verify URL when backend is configured', async () => {
+    // Có backend verify → QR chứa URL xác thực thật thay vì JSON
+    vi.stubEnv('VITE_VERIFY_BASE_URL', 'https://api.focusproof.example');
+    try {
+      mockedToDataURL.mockClear();
+      const session = createMockSession();
+      await generateQRDataUrl(session);
+
+      const [content] = mockedToDataURL.mock.calls[0];
+      expect(content).toContain('https://api.focusproof.example/verify/');
+      expect(content).toContain(encodeURIComponent('session-qr-test-001'));
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('should propagate QRCode library errors', async () => {

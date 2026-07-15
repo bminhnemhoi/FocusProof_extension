@@ -50,6 +50,28 @@ let abortController: AbortController | null = null;
 let typedContentBuffer = '';
 /** Flag để detect IME composing state */
 let isComposing = false;
+/**
+ * Chỉ thu NỘI DUNG gõ khi background bật cờ này (người dùng opt-in trong
+ * cấu hình phiên). Mặc định TẮT — đếm số keystroke vẫn hoạt động bình thường
+ * (tín hiệu activity chỉ cần số lượng, không cần nội dung).
+ */
+let captureTyped = false;
+
+/**
+ * Trường nhạy cảm KHÔNG BAO GIỜ được thu nội dung, kể cả khi đã opt-in:
+ * mật khẩu, OTP, số thẻ, và các input tự khai autocomplete nhạy cảm.
+ */
+function isSensitiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLInputElement)) return false;
+  const type = (target.type || '').toLowerCase();
+  if (type === 'password' || type === 'email' || type === 'tel') return true;
+  const autocomplete = (target.autocomplete || '').toLowerCase();
+  return (
+    autocomplete.includes('password') ||
+    autocomplete.includes('cc-') ||
+    autocomplete.includes('one-time-code')
+  );
+}
 
 function createEmptyBuffer(): ActivityResult {
   return { keystrokes: 0, clicks: 0, scrolls: 0, idle: true };
@@ -83,8 +105,8 @@ function startTracking() {
       // Khi IME commit → đếm 1 keystroke cho toàn bộ chuỗi composition
       activityBuffer.keystrokes++;
       markActive();
-      // Capture typed content từ IME
-      if (e.data) {
+      // Capture typed content từ IME — không thu từ trường nhạy cảm
+      if (e.data && !isSensitiveTarget(e.target)) {
         appendTypedContent(e.data);
       }
     },
@@ -99,8 +121,9 @@ function startTracking() {
       activityBuffer.keystrokes++;
       markActive();
 
-      // Capture single key input (non-IME)
-      if (e.key.length === 1) {
+      // Capture single key input (non-IME) — không thu từ trường nhạy cảm
+      // (mật khẩu/OTP/thẻ): chỉ đếm keystroke, không lưu ký tự
+      if (e.key.length === 1 && !isSensitiveTarget(e.target)) {
         appendTypedContent(e.key);
       }
     },
@@ -173,7 +196,8 @@ function startTracking() {
     'paste',
     (e: ClipboardEvent) => {
       markActive();
-      // Capture pasted text
+      // Capture pasted text — không thu khi dán vào trường nhạy cảm
+      if (isSensitiveTarget(e.target)) return;
       const pasted = e.clipboardData?.getData('text') ?? '';
       if (pasted) {
         appendTypedContent(pasted);
@@ -204,6 +228,8 @@ function markActive() {
 }
 
 function appendTypedContent(text: string) {
+  // Người dùng chưa opt-in → không lưu bất kỳ nội dung nào
+  if (!captureTyped) return;
   typedContentBuffer += text;
   // Giữ chỉ 500 ký tự cuối
   if (typedContentBuffer.length > TYPED_CONTENT_MAX_CHARS) {
@@ -249,6 +275,8 @@ chrome.runtime.onMessage.addListener(
     switch (message.type) {
       case 'START_SESSION':
         typedContentBuffer = '';
+        captureTyped =
+          (message.payload as { captureTyped?: boolean } | null)?.captureTyped === true;
         startTracking();
         createWidget();
         sendResponse({ success: true });

@@ -19,6 +19,7 @@ import type {
 import { SAMPLING_INTERVAL_MS } from '@/utils/types';
 import { storage } from '@/utils/storage';
 import { calculateSampleScore, calculateFinalScore } from '@/utils/focus';
+import { computeIntegrityHash } from '@/utils/certificate-signing';
 import { checkBadges, mergeBadges } from '@/utils/gamification';
 
 import * as offscreen from './offscreen-manager';
@@ -202,8 +203,13 @@ async function pollActivity(tabId: number | null): Promise<ActivityResult> {
 // Sampling Loop (mỗi 6 giây)
 // ============================================================
 
+/** Guard chống doSample chạy chồng (tick 6s có thể đến khi tick trước chưa xong) */
+let sampleInFlight = false;
+
 async function doSample(): Promise<void> {
   if (!currentSession || currentSession.status !== 'running') return;
+  if (sampleInFlight) return;
+  sampleInFlight = true;
 
   try {
     const config = currentSession.config;
@@ -211,16 +217,23 @@ async function doSample(): Promise<void> {
 
   // 1. Refresh tab state
   await tabTracker.refreshCurrentTab();
-  let tabState = tabTracker.getState();
+  const tabState = tabTracker.getState();
 
-  // 2. Strict Mode check: only allow the tab where session started
-  //    Force inside-Chrome evaluation so domain is checked against allowed list
-  if (config.strictMode && tabState.sessionStartTabId !== null && tabState.tabId !== tabState.sessionStartTabId) {
-    tabState = { ...tabState, isOutsideChrome: false };
-  }
+  // 2. Strict Mode: phiên hứa "chỉ dùng 1 tab" — chuyển sang tab khác là
+  //    vi phạm thật (trước đây chỉ ép đánh giá domain của tab mới, tức
+  //    điều kiện người dùng bật lên không hề được thực thi).
+  const strictViolation =
+    config.strictMode &&
+    !tabState.isOutsideChrome &&
+    tabState.sessionStartTabId !== null &&
+    tabState.tabId !== null &&
+    tabState.tabId !== tabState.sessionStartTabId;
 
   // 3. Build tab result with goal evaluation
-  const tabResult = goalManager.buildTabResult(tabState, goalConfig);
+  let tabResult = goalManager.buildTabResult(tabState, goalConfig);
+  if (strictViolation) {
+    tabResult = { ...tabResult, isAllowed: false };
+  }
 
   // 4. Poll face (only if camera enabled)
   const faceResult: FaceResult = config.cameraEnabled
@@ -229,6 +242,10 @@ async function doSample(): Promise<void> {
 
   // 5. Poll activity from content script
   const activityResult = await pollActivity(tabState.tabId);
+
+  // Session có thể đã bị stop trong lúc chờ các poll ở trên — bỏ sample này
+  // để không ghi thêm dữ liệu sau khi finalScore/hash đã được tính.
+  if (!currentSession || (currentSession as SessionData).status !== 'running') return;
 
   // 6. Goal compliance for this sample
   const goalCompliant = tabResult.isAllowed;
@@ -263,6 +280,12 @@ async function doSample(): Promise<void> {
     goalConfig,
   });
 
+  // 9b. Persist alerts vào session (nguồn sự thật cho thống kê cuối phiên +
+  //     AI). Ghi ngay trong loop để không mất khi Service Worker bị kill.
+  if (newAlerts.length > 0) {
+    (currentSession.alerts ??= []).push(...newAlerts);
+  }
+
   // 10. Send widget update TRƯỚC alerts (widget phải tồn tại để hiển thị toast)
   const elapsed = Date.now() - currentSession.startTime;
   const totalMs = config.durationMinutes * 60 * 1000;
@@ -290,8 +313,9 @@ async function doSample(): Promise<void> {
     await alertManager.sendToContentScript(tabState.tabId, newAlerts);
   }
 
-  // 12. Persist session periodically (every 5 samples ≈ 30s)
-  if (currentSession.samples.length % 5 === 0) {
+  // 12. Persist session: định kỳ mỗi 5 samples (~30s), và NGAY khi có alert
+  //     mới để thống kê cảnh báo không mất nếu Service Worker bị kill
+  if (newAlerts.length > 0 || currentSession.samples.length % 5 === 0) {
     await storage.saveCurrentSession(currentSession);
   }
 
@@ -301,6 +325,8 @@ async function doSample(): Promise<void> {
   }
   } catch (err) {
     console.error('[BG] doSample error (session continues):', err);
+  } finally {
+    sampleInFlight = false;
   }
 }
 
@@ -323,24 +349,11 @@ function stopSamplingLoop(): void {
 }
 
 // ============================================================
-// SHA-256 Hash Generation
+// SHA-256 Integrity Fingerprint
 // ============================================================
-
-async function generateSessionHash(session: SessionData): Promise<string> {
-  const payload = JSON.stringify({
-    id: session.id,
-    startTime: session.startTime,
-    endTime: session.endTime,
-    finalScore: session.finalScore,
-    totalSamples: session.samples.length,
-    taskName: session.config.taskName,
-  });
-
-  const encoded = new TextEncoder().encode(payload);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+// Dùng nguồn hash CHUNG (certificate-signing.ts) để tránh trùng lặp logic và
+// bảo đảm hash khớp giữa lúc tạo và lúc verify. Xem ghi chú minh bạch trong
+// certificate-signing.ts: đây là dấu vân tay toàn vẹn, không phải chữ ký số.
 
 // ============================================================
 // Session Lifecycle
@@ -360,6 +373,7 @@ export async function startSession(config: SessionConfig) {
     status: 'running',
     startTime: Date.now(),
     samples: [],
+    alerts: [],
     badges: [],
   };
 
@@ -395,7 +409,7 @@ export async function startSession(config: SessionConfig) {
       try {
         await chrome.tabs.sendMessage(targetTabId, {
           type: 'START_SESSION',
-          payload: null,
+          payload: getStartSessionPayload(),
         });
         console.warn('[BG] Widget injected on tab', targetTabId);
       } catch {
@@ -413,13 +427,64 @@ export async function startSession(config: SessionConfig) {
   // Start the 6-second sampling loop
   startSamplingLoop();
 
+  // Watchdog backstop: setInterval chết cùng Service Worker nếu Chrome kill
+  // SW giữa phiên; chrome.alarms là event duy nhất chắc chắn đánh thức SW dậy
+  // để restoreSession() nối lại sampling.
+  try {
+    await chrome.alarms?.create(SESSION_WATCHDOG_ALARM, { periodInMinutes: 0.5 });
+  } catch {
+    // alarms API không khả dụng (test env) → bỏ qua
+  }
+
   console.warn('[BG] Session started:', sessionId);
   return { success: true, sessionId };
+}
+
+/**
+ * Payload gửi kèm START_SESSION cho content script.
+ * captureTyped mặc định FALSE — nội dung gõ chỉ được thu khi người dùng
+ * opt-in rõ ràng trong cấu hình phiên (yêu cầu user-data policy của Web Store).
+ */
+export function getStartSessionPayload(): { captureTyped: boolean } {
+  return { captureTyped: currentSession?.config.captureTypedContent === true };
+}
+
+/** Tên alarm watchdog cho phiên đang chạy */
+export const SESSION_WATCHDOG_ALARM = 'fp_session_watchdog';
+
+/**
+ * Gọi từ chrome.alarms.onAlarm: nếu SW vừa bị kill giữa phiên (state RAM mất,
+ * sampling loop chết) → khôi phục từ storage; nếu session còn trong RAM nhưng
+ * loop đã chết → nối lại loop.
+ */
+export async function watchdogCheck(): Promise<void> {
+  if (!currentSession) {
+    await restoreSession();
+    // Không còn phiên chạy trong storage → dọn alarm
+    if (!currentSession) {
+      try {
+        await chrome.alarms?.clear(SESSION_WATCHDOG_ALARM);
+      } catch {
+        /* ignore */
+      }
+    }
+    return;
+  }
+  if (currentSession.status === 'running' && !samplingIntervalId) {
+    console.warn('[BG] Watchdog: sampling loop dead — restarting');
+    startSamplingLoop();
+  }
 }
 
 export async function stopSession() {
   if (!currentSession) {
     return { error: 'No active session' };
+  }
+  // Idempotency guard: auto-stop (hết giờ) và user bấm Stop có thể gọi gần
+  // như đồng thời → lần gọi thứ hai sẽ thấy status != 'running' và dừng ở
+  // đây, tránh finalize 2 lần (lịch sử/chứng chỉ/analytics bị nhân đôi).
+  if (currentSession.status !== 'running') {
+    return { error: 'Session already stopping' };
   }
 
   // Stop sampling
@@ -432,8 +497,8 @@ export async function stopSession() {
   // Calculate final score (0-100)
   currentSession.finalScore = calculateFinalScore(currentSession.samples);
 
-  // Generate SHA-256 hash for integrity verification
-  currentSession.hash = await generateSessionHash(currentSession);
+  // Generate SHA-256 integrity fingerprint (nguồn hash chung)
+  currentSession.hash = await computeIntegrityHash(currentSession);
 
   // Check badges (gamification)
   const earnedBadges = checkBadges(currentSession);
@@ -460,6 +525,11 @@ export async function stopSession() {
   alertManager.reset();
   tabTracker.reset();
   await storage.clearCurrentSession();
+  try {
+    await chrome.alarms?.clear(SESSION_WATCHDOG_ALARM);
+  } catch {
+    /* alarms API không khả dụng → bỏ qua */
+  }
 
   // Stop content script tracking — gửi STOP_SESSION đến TẤT CẢ tab
   // (widget có thể tồn tại trên nhiều tab mà user đã ghé qua trong session)
@@ -491,6 +561,8 @@ export async function restoreSession(): Promise<void> {
   const saved = await storage.getCurrentSession();
   if (saved && saved.status === 'running') {
     currentSession = saved;
+    // Tương thích ngược: phiên lưu trước bản cập nhật chưa có mảng alerts
+    if (!currentSession.alerts) currentSession.alerts = [];
     alertManager.init();
     console.warn('[BG] Restored running session:', saved.id);
 
@@ -501,8 +573,12 @@ export async function restoreSession(): Promise<void> {
     // Re-create offscreen if camera was enabled
     if (saved.config.cameraEnabled) {
       const created = await offscreen.ensureDocument();
-      if (created) {
-        await offscreen.initCamera();
+      const cameraOk = created ? await offscreen.initCamera() : false;
+      if (!cameraOk) {
+        // Giống startSession: camera hỏng → hạ về Camera-Off để trọng số
+        // chuyển sang 60/40, tránh mất oan 40% điểm face sau khi SW restart
+        console.warn('[BG] Camera re-init failed after SW restart — Camera-Off mode');
+        currentSession.config = { ...currentSession.config, cameraEnabled: false };
       }
     }
 

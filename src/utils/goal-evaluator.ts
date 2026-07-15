@@ -41,9 +41,21 @@ export function isGoalCompliant(currentState: string, config: GoalConfig): boole
     ...config.customAllowedDomains,
   ];
 
-  return allAllowed.some(
-    (allowed) => currentState.includes(allowed) || allowed.includes(currentState),
-  );
+  // So khớp theo hostname (exact hoặc subdomain), KHÔNG dùng substring 2 chiều:
+  // substring cho phép lách kiểu "fake-notion.so.evil.com" chứa "notion.so",
+  // làm sai lệch điểm tab — tín hiệu cốt lõi của sản phẩm.
+  const hostname = (
+    currentState.includes('://') ? extractDomain(currentState) : currentState
+  )
+    .toLowerCase()
+    .trim();
+  if (!hostname) return false;
+
+  return allAllowed.some((allowed) => {
+    // Người dùng có thể nhập URL đầy đủ vào custom domains → chuẩn hóa về hostname
+    const a = (allowed.includes('://') ? extractDomain(allowed) : allowed).toLowerCase().trim();
+    return !!a && (hostname === a || hostname.endsWith('.' + a));
+  });
 }
 
 /**

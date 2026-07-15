@@ -50,6 +50,20 @@ export async function refreshCurrentTab(): Promise<void> {
     if (tab?.url) {
       currentTabUrl = tab.url;
       currentTabId = tab.id ?? null;
+    }
+
+    // isOutsideChrome chỉ được xóa khi cửa sổ Chrome THẬT SỰ có focus.
+    // tabs.query vẫn trả về tab khi user đã rời Chrome, nên reset cờ vô điều
+    // kiện ở đây sẽ ghi đè cờ do onWindowFocusChanged đặt mỗi tick 6 giây —
+    // làm tín hiệu "rời Chrome" (1 trong 3 tín hiệu chấm điểm) gần như câm.
+    if (chrome.windows?.getLastFocused) {
+      const win = await chrome.windows.getLastFocused();
+      isOutsideChrome = !win?.focused;
+      if (isOutsideChrome) {
+        currentTabUrl = OUTSIDE_CHROME_MARKER;
+      }
+    } else if (tab?.url) {
+      // Môi trường không có windows API (test cũ) → giữ hành vi cũ
       isOutsideChrome = false;
     }
   } catch {

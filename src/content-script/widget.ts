@@ -23,7 +23,7 @@ let shadowRoot: ShadowRoot | null = null;
 let hostElement: HTMLElement | null = null;
 let isMinimized = false;
 let isDragging = false;
-let dragOffset = { x: 0, y: 0 };
+const dragOffset = { x: 0, y: 0 };
 
 // Local countdown state — đếm ngược mỗi giây giữa các WIDGET_UPDATE (6s)
 let lastUpdateData: WidgetUpdatePayload | null = null;
@@ -200,6 +200,12 @@ const WIDGET_STYLES = `
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
 
+/* Widget sát mép trên → lật toast xuống dưới để không bị cắt */
+.fp-toast--below {
+  top: auto;
+  bottom: -50px;
+}
+
 @keyframes fp-toast-in {
   from { opacity: 0; transform: translateX(-50%) translateY(10px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -208,6 +214,10 @@ const WIDGET_STYLES = `
 @keyframes fp-toast-out {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp-widget, .fp-toast { animation: none !important; transition: none !important; }
 }
 `;
 
@@ -240,7 +250,8 @@ export function createWidget(): void {
     container.addEventListener('touchstart', onTouchDragStart, { passive: false });
 
     shadowRoot.appendChild(container);
-    document.body.appendChild(hostElement);
+    (document.fullscreenElement ?? document.body).appendChild(hostElement);
+    installGlobalListeners();
   } catch (err) {
     console.error('[FocusProof] Widget creation failed:', err);
     // Cleanup partial state
@@ -248,6 +259,27 @@ export function createWidget(): void {
     hostElement = null;
     shadowRoot = null;
   }
+}
+
+// Listener cấp document, cài 1 lần và tự no-op khi widget không tồn tại
+let globalListenersInstalled = false;
+
+function installGlobalListeners(): void {
+  if (globalListenersInstalled) return;
+  globalListenersInstalled = true;
+
+  // Video fullscreen (YouTube/Coursera...) tạo top layer che widget —
+  // re-append vào fullscreenElement để widget vẫn hiển thị khi xem bài giảng
+  document.addEventListener('fullscreenchange', () => {
+    if (!hostElement) return;
+    (document.fullscreenElement ?? document.body).appendChild(hostElement);
+  });
+
+  // Sau khi kéo, vị trí left/top là tuyệt đối — kẹp lại khi cửa sổ đổi kích thước
+  window.addEventListener('resize', () => {
+    if (!hostElement || !hostElement.style.left) return;
+    setHostPosition(parseFloat(hostElement.style.left), parseFloat(hostElement.style.top));
+  });
 }
 
 export function destroyWidget(): void {
@@ -330,14 +362,36 @@ function renderWidget(
   const seconds = Math.floor((timeRemaining % 60000) / 1000);
   const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-  if (isMinimized) {
+  const restore = () => {
+    isMinimized = false;
+    container.classList.remove('fp-minimized');
+    container.onclick = null;
+    container.onkeydown = null;
+    container.removeAttribute('role');
+    container.removeAttribute('tabindex');
+    container.removeAttribute('aria-label');
+    renderWidget(focusScore, timeRemaining, faceDetected, isIdle, goalCompliant);
+  };
+
+  const enterMinimized = () => {
+    isMinimized = true;
+    container.classList.add('fp-minimized');
     container.innerHTML = `<span class="fp-mini-score">${scorePercent}</span>`;
-    container.onclick = () => {
-      isMinimized = false;
-      container.classList.remove('fp-minimized');
-      container.onclick = null;
-      renderWidget(focusScore, timeRemaining, faceDetected, isIdle, goalCompliant);
+    // Cho phép mở lại bằng bàn phím, không chỉ click chuột
+    container.setAttribute('role', 'button');
+    container.setAttribute('tabindex', '0');
+    container.setAttribute('aria-label', 'Mở rộng widget FocusProof');
+    container.onclick = restore;
+    container.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        restore();
+      }
     };
+  };
+
+  if (isMinimized) {
+    enterMinimized();
   } else {
     container.innerHTML = buildExpandedHTML(
       scorePercent,
@@ -351,15 +405,7 @@ function renderWidget(
     if (minBtn) {
       minBtn.onclick = (e) => {
         e.stopPropagation();
-        isMinimized = true;
-        container.classList.add('fp-minimized');
-        container.innerHTML = `<span class="fp-mini-score">${scorePercent}</span>`;
-        container.onclick = () => {
-          isMinimized = false;
-          container.classList.remove('fp-minimized');
-          container.onclick = null;
-          renderWidget(focusScore, timeRemaining, faceDetected, isIdle, goalCompliant);
-        };
+        enterMinimized();
       };
     }
   }
@@ -385,15 +431,19 @@ export function showAlert(alert: AlertEvent): void {
   container.classList.add('fp-alert-flash');
   setTimeout(() => container.classList.remove('fp-alert-flash'), 2000);
 
-  // Toast
+  // Toast — append vào shadowRoot (sibling của container) để không bị
+  // renderWidget() rebuild innerHTML xóa mất giữa chừng (update mỗi ~6s)
   const existing = shadowRoot.querySelector('.fp-toast');
   if (existing) existing.remove();
 
   const toast = document.createElement('div');
   toast.className = 'fp-toast';
+  // Widget sát mép trên màn hình → lật toast xuống dưới để không bị cắt
+  if (hostElement && hostElement.getBoundingClientRect().top < 60) {
+    toast.classList.add('fp-toast--below');
+  }
   toast.textContent = alert.message;
-  container.style.position = 'relative';
-  container.appendChild(toast);
+  shadowRoot.appendChild(toast);
 
   // Auto-remove after animation
   setTimeout(() => toast.remove(), 3500);
@@ -474,20 +524,26 @@ function onDragStart(e: MouseEvent) {
   document.addEventListener('mouseup', onDragEnd);
 }
 
-function onDragMove(e: MouseEvent) {
-  if (!isDragging || !hostElement) return;
-
-  const x = e.clientX - dragOffset.x;
-  const y = e.clientY - dragOffset.y;
-
-  // Clamp to viewport
+/**
+ * Đặt vị trí widget bằng inline style có !important.
+ * BẮT BUỘC dùng setProperty(..., 'important'): :host trong stylesheet khai báo
+ * bottom/right 20px !important (chống CSS trang đè), nên inline style thường
+ * sẽ THUA theo cascade — bottom/right không được thả ra, widget bị neo cả 4
+ * cạnh và kéo giãn kín màn hình (bug đã tái hiện bằng headless Chrome).
+ */
+function setHostPosition(x: number, y: number): void {
+  if (!hostElement) return;
   const maxX = window.innerWidth - (hostElement.offsetWidth || 200);
   const maxY = window.innerHeight - (hostElement.offsetHeight || 150);
+  hostElement.style.setProperty('left', `${Math.max(0, Math.min(x, maxX))}px`, 'important');
+  hostElement.style.setProperty('top', `${Math.max(0, Math.min(y, maxY))}px`, 'important');
+  hostElement.style.setProperty('right', 'auto', 'important');
+  hostElement.style.setProperty('bottom', 'auto', 'important');
+}
 
-  hostElement.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
-  hostElement.style.top = `${Math.max(0, Math.min(y, maxY))}px`;
-  hostElement.style.right = 'auto';
-  hostElement.style.bottom = 'auto';
+function onDragMove(e: MouseEvent) {
+  if (!isDragging || !hostElement) return;
+  setHostPosition(e.clientX - dragOffset.x, e.clientY - dragOffset.y);
 }
 
 function onDragEnd() {
@@ -522,17 +578,7 @@ function onTouchDragStart(e: TouchEvent) {
 function onTouchDragMove(e: TouchEvent) {
   if (!isDragging || !hostElement || !e.touches[0]) return;
   e.preventDefault();
-
-  const x = e.touches[0].clientX - dragOffset.x;
-  const y = e.touches[0].clientY - dragOffset.y;
-
-  const maxX = window.innerWidth - (hostElement.offsetWidth || 200);
-  const maxY = window.innerHeight - (hostElement.offsetHeight || 150);
-
-  hostElement.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
-  hostElement.style.top = `${Math.max(0, Math.min(y, maxY))}px`;
-  hostElement.style.right = 'auto';
-  hostElement.style.bottom = 'auto';
+  setHostPosition(e.touches[0].clientX - dragOffset.x, e.touches[0].clientY - dragOffset.y);
 }
 
 function onTouchDragEnd() {

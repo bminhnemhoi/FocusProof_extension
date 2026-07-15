@@ -4,6 +4,29 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+
+  /* Thang màu heatmap theo mức điểm (kế thừa token success/danger theo theme) */
+  --heat-good: var(--success);
+  --heat-mid: #eab308;
+  --heat-low: #f97316;
+  --heat-bad: var(--danger);
+}
+
+@media (prefers-color-scheme: dark) {
+  .history-screen {
+    --heat-mid: #facc15;
+    --heat-low: #fb923c;
+  }
+}
+
+[data-theme='dark'] .history-screen {
+  --heat-mid: #facc15;
+  --heat-low: #fb923c;
+}
+
+[data-theme='light'] .history-screen {
+  --heat-mid: #eab308;
+  --heat-low: #f97316;
 }
 
 .history-title {
